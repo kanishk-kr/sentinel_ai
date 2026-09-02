@@ -1,0 +1,85 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sentinel-backend"
+version = "1.0.0"
+description = "SENTINEL — Self-Hosted Sovereign AI Workbench Backend"
+requires-python = ">=3.11"
+dependencies = [
+    # Web Framework
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "websockets>=12.0",
+    "python-multipart>=0.0.9",
+
+    # Database
+    "sqlalchemy[asyncio]>=2.0.25",
+    "asyncpg>=0.29.0",
+    "alembic>=1.13.0",
+    "greenlet>=3.0.0",
+
+    # Vector DB
+    "qdrant-client>=1.7.0",
+
+    # Auth & Security
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    "bcrypt>=4.1.0",
+
+    # Validation & Serialization
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "pyyaml>=6.0",
+
+    # LLM Providers
+    "groq>=0.4.0",
+    "google-genai>=1.0.0",
+
+    # HTTP Client
+    "httpx>=0.26.0",
+
+    # Document Processing
+    "python-docx>=1.1.0",
+    "openpyxl>=3.1.0",
+    "python-pptx>=0.6.23",
+
+    # OCR & Vision
+    "pytesseract>=0.3.10",
+    "Pillow>=10.2.0",
+    "pdf2image>=1.17.0",
+    "PyPDF2>=3.0.0",
+
+    # Embeddings (local fallback)
+    "sentence-transformers>=2.3.0",
+
+    # Utilities
+    "python-dotenv>=1.0.0",
+    "aiofiles>=23.2.0",
+    "orjson>=3.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "httpx>=0.26.0",
+    "ruff>=0.2.0",
+    "mypy>=1.8.0",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
