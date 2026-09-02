@@ -64,19 +64,19 @@ export function Sidebar({
   }
 
   async function handleNewConversation() {
-    if (onNewConversation) {
-      onNewConversation();
-    }
-    if (pathname !== "/") {
-      router.push("/");
-    }
+    router.push('/');
+    if (window.innerWidth < 1024) toggleSidebar();
   }
 
   async function handleDeleteSession(e: React.MouseEvent, sessionId: string) {
     e.stopPropagation();
+    e.preventDefault();
     try {
       await ApiClient.deleteSession(sessionId);
       setSessions(prev => prev.filter(s => s.id !== sessionId));
+      if (activeSessionId === sessionId) {
+        router.push('/');
+      }
     } catch (err) {
       console.error("Failed to delete session", err);
     }
@@ -127,9 +127,10 @@ export function Sidebar({
             </p>
           ) : (
             sessions.map((session) => (
-              <button
+              <Link
+                href={`/c/${session.id}`}
                 key={session.id}
-                onClick={() => onSessionSelect?.(session.id)}
+                onClick={() => window.innerWidth < 1024 && toggleSidebar()}
                 className={`flex items-center justify-between w-full px-2 py-1.5 text-sm rounded-lg transition-colors group ${
                   activeSessionId === session.id
                     ? "bg-gray-100 text-gray-900"
@@ -139,7 +140,7 @@ export function Sidebar({
                 <span className="truncate flex-1 text-left text-[13px]">{session.title || "Untitled"}</span>
                 <div className="flex items-center ml-2 space-x-1">
                   {activeSessionId === session.id && (
-                    <div className="h-1.5 w-1.5 rounded-full bg-indigo-500 flex-shrink-0"></div>
+                    <span className="text-[10px] text-gray-400 mr-1">{session.message_count} msgs</span>
                   )}
                   <button
                     onClick={(e) => handleDeleteSession(e, session.id)}
@@ -148,7 +149,7 @@ export function Sidebar({
                     <Trash2 className="h-3 w-3" />
                   </button>
                 </div>
-              </button>
+              </Link>
             ))
           )}
         </div>

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { ArrowRight, Bot, User, Loader2, Plus, ChevronDown, BookOpen, ExternalLink } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { ApiClient } from "@/lib/api";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -41,6 +42,7 @@ export function ChatInterface({
   sessionId?: string | null;
   onSessionCreated?: (sessionId: string) => void;
 }) {
+  const router = useRouter();
   const [messages, setMessages] = React.useState<Message[]>([]);
   const [input, setInput] = React.useState("");
   const [isLoading, setIsLoading] = React.useState(false);
@@ -110,6 +112,8 @@ export function ChatInterface({
         currentSessionId = session.id;
         setSessionId(currentSessionId);
         onSessionCreated?.(currentSessionId);
+        // Shallow update URL without unmounting the component while it waits for the LLM response
+        window.history.replaceState(null, '', '/c/' + currentSessionId);
       }
       
       if (userText.trim().startsWith("/task")) {
@@ -295,7 +299,7 @@ export function ChatInterface({
           </div>
         )}
 
-        <div className="w-full max-w-3xl bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden flex flex-col transition-all focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-400">
+        <div className="w-full max-w-3xl mx-auto bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden flex flex-col transition-all focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-400">
           
           <textarea
             value={input}

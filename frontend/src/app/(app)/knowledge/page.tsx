@@ -1,14 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { Topbar } from "@/components/layout/Topbar";
 import { Database, UploadCloud, Search, FileText, Tag, Loader2, BookOpen, CheckCircle, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ApiClient } from "@/lib/api";
 
 export default function KnowledgePage() {
-  const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [documents, setDocuments] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -68,13 +65,7 @@ export default function KnowledgePage() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white text-gray-900">
-      <Sidebar isOpen={sidebarOpen} toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
-      
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative z-10">
-        <Topbar toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
-        
-        <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 flex flex-col">
+    <div className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 flex flex-col relative">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-xl font-bold tracking-tight">Knowledge Base</h1>
@@ -255,8 +246,6 @@ export default function KnowledgePage() {
               </div>
             </div>
           </div>
-        </main>
-      </div>
     </div>
   );
 }

@@ -1,15 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { Topbar } from "@/components/layout/Topbar";
 import { PlayCircle, CheckCircle2, XCircle, Clock, Loader2 } from "lucide-react";
 import { ApiClient } from "@/lib/api";
 import { useRouter } from "next/navigation";
 
 export default function TasksPage() {
   const router = useRouter();
-  const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [tasks, setTasks] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [selectedTask, setSelectedTask] = React.useState<any>(null);
@@ -41,13 +38,7 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white text-gray-900">
-      <Sidebar isOpen={sidebarOpen} toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
-      
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative z-10">
-        <Topbar toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
-        
-        <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8">
+    <div className="flex-1 overflow-auto p-4 md:p-6 lg:p-8">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-xl font-bold tracking-tight">Agent Tasks</h1>
@@ -156,8 +147,6 @@ export default function TasksPage() {
               </div>
             )}
           </div>
-        </main>
-      </div>
     </div>
   );
 }

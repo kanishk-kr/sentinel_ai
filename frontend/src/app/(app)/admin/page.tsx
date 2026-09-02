@@ -1,14 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { Topbar } from "@/components/layout/Topbar";
 import { Shield, ShieldAlert, Cpu, Network, Activity, Loader2, CheckCircle, XCircle, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ApiClient } from "@/lib/api";
 
 export default function AdminPage() {
-  const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [securityData, setSecurityData] = React.useState<any>(null);
   const [models, setModels] = React.useState<any[]>([]);
   const [auditLog, setAuditLog] = React.useState<any[]>([]);
@@ -51,13 +48,7 @@ export default function AdminPage() {
   const isSovereign = securityData?.current_mode === "SOVEREIGN";
 
   return (
-    <div className="flex h-screen overflow-hidden bg-white text-gray-900">
-      <Sidebar isOpen={sidebarOpen} toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
-      
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative z-10">
-        <Topbar toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
-        
-        <main className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 flex flex-col">
+    <div className="flex-1 overflow-auto p-4 md:p-6 lg:p-8 flex flex-col">
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-xl font-bold tracking-tight text-gray-900">Admin Console</h1>
@@ -231,8 +222,6 @@ export default function AdminPage() {
               </div>
             </div>
           )}
-        </main>
-      </div>
     </div>
   );
 }
