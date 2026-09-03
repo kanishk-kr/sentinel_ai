@@ -8,6 +8,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { materialLight } from "react-syntax-highlighter/dist/cjs/styles/prism";
+import { TaskDetailPanel } from "@/components/chat/TaskDetailPanel";
 
 interface Citation {
   document_title?: string;
@@ -48,6 +49,34 @@ export function ChatInterface({
   const [isLoading, setIsLoading] = React.useState(false);
   const [sessionId, setSessionId] = React.useState<string | null>(externalSessionId || null);
   const scrollRef = React.useRef<HTMLDivElement>(null);
+  
+  // Sidebar state
+  const [sidebarTaskId, setSidebarTaskId] = React.useState<string | null>(null);
+  const [sidebarTaskDetail, setSidebarTaskDetail] = React.useState<any>(null);
+  const [sidebarLoading, setSidebarLoading] = React.useState(false);
+
+  // Load task details when sidebar opens
+  React.useEffect(() => {
+    if (sidebarTaskId) {
+      setSidebarLoading(true);
+      ApiClient.getTask(sidebarTaskId)
+        .then(data => {
+          setSidebarTaskDetail(data);
+          setSidebarLoading(false);
+        })
+        .catch(err => {
+          console.error("Failed to load task details", err);
+          setSidebarLoading(false);
+        });
+    } else {
+      setSidebarTaskDetail(null);
+    }
+  }, [sidebarTaskId]);
+
+  const extractTaskId = (content: string) => {
+    const match = content.match(/\(ID: ([a-f0-9\-]+)\)/i);
+    return match ? match[1] : null;
+  };
 
   // Sync external session id
   React.useEffect(() => {
@@ -158,14 +187,14 @@ export function ChatInterface({
   const isEmpty = messages.length === 0;
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Messages Area */}
-      {!isEmpty && (
-        <div 
-          ref={scrollRef}
-          className="flex-1 overflow-y-auto px-4 md:px-8 py-6 space-y-6 scroll-smooth bg-white"
-        >
-          <div className="max-w-3xl mx-auto space-y-8">
+    <div className="flex flex-col h-full bg-white overflow-hidden">
+        {/* Messages Area */}
+        {!isEmpty && (
+          <div 
+            ref={scrollRef}
+            className="flex-1 overflow-y-auto px-4 md:px-8 py-6 space-y-6 scroll-smooth"
+          >
+            <div className="max-w-3xl mx-auto space-y-8">
             {messages.map((msg) => (
               <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                 {/* Avatar + Name */}
@@ -221,6 +250,32 @@ export function ChatInterface({
                   >
                     {msg.content}
                   </ReactMarkdown>
+                  
+                  {/* Task Actions */}
+                  {msg.role === "assistant" && extractTaskId(msg.content) && (
+                    <div className="mt-3 w-full">
+                      <button 
+                        onClick={() => setSidebarTaskId(sidebarTaskId === extractTaskId(msg.content) ? null : extractTaskId(msg.content))}
+                        className="text-xs font-medium bg-indigo-50 text-indigo-700 hover:bg-indigo-100 px-3 py-1.5 rounded-full transition-colors border border-indigo-200"
+                      >
+                        {sidebarTaskId === extractTaskId(msg.content) ? "Close Task Details" : "View Task Details"}
+                      </button>
+                      
+                      {sidebarTaskId === extractTaskId(msg.content) && (
+                        <div className="mt-3 border border-gray-200 rounded-lg overflow-hidden bg-white max-h-[500px] flex flex-col shadow-sm">
+                          {sidebarLoading ? (
+                            <div className="p-8 flex items-center justify-center text-gray-400">
+                              <Loader2 className="w-5 h-5 animate-spin" />
+                            </div>
+                          ) : (
+                            <div className="overflow-y-auto p-4 flex-1">
+                              <TaskDetailPanel task={sidebarTaskDetail} onClose={() => setSidebarTaskId(null)} />
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* FR9.4 — Citations displayed inline */}

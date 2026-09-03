@@ -4,6 +4,7 @@ import * as React from "react";
 import { PlayCircle, CheckCircle2, XCircle, Clock, Loader2 } from "lucide-react";
 import { ApiClient } from "@/lib/api";
 import { useRouter } from "next/navigation";
+import { TaskDetailPanel, StatusBadge } from "@/components/chat/TaskDetailPanel";
 
 export default function TasksPage() {
   const router = useRouter();
@@ -104,89 +105,11 @@ export default function TasksPage() {
 
             {/* Task Detail Panel */}
             {selectedTask && (
-              <div className="lg:col-span-1 rounded-xl border border-gray-200 p-4 overflow-y-auto">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-semibold text-gray-800">Task Details</h3>
-                  <button onClick={() => setSelectedTask(null)} className="text-gray-400 hover:text-gray-600 text-xs">✕</button>
-                </div>
-                
-                <div className="space-y-3 text-xs">
-                  <div>
-                    <span className="text-gray-400 block mb-0.5">Goal</span>
-                    <span className="text-gray-700 font-medium">{selectedTask.goal}</span>
-                  </div>
-                  <div>
-                    <span className="text-gray-400 block mb-0.5">Status</span>
-                    <StatusBadge status={selectedTask.status} />
-                  </div>
-                  {selectedTask.error_message && (
-                    <div className="bg-red-50 border border-red-100 rounded-lg p-2 text-red-600">
-                      {selectedTask.error_message}
-                    </div>
-                  )}
-                  {selectedTask.steps && selectedTask.steps.length > 0 && (
-                    <div>
-                      <span className="text-gray-400 block mb-1.5">Steps ({selectedTask.steps.length})</span>
-                      <div className="space-y-1.5">
-                        {selectedTask.steps.map((step: any, i: number) => (
-                          <div key={step.id} className="flex items-start space-x-2 p-2 bg-gray-50 rounded-lg border border-gray-100">
-                            <span className="text-[10px] text-gray-400 font-mono">{i + 1}</span>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-gray-700 truncate">{step.description || step.tool_used || "Step"}</p>
-                              <div className="flex items-center space-x-2 mt-0.5">
-                                <StatusBadge status={step.status} />
-                                {step.model_used && <span className="text-[9px] text-gray-400">{step.model_used}</span>}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+              <div className="lg:col-span-1 rounded-xl border border-gray-200 p-4">
+                <TaskDetailPanel task={selectedTask} onClose={() => setSelectedTask(null)} />
               </div>
             )}
           </div>
     </div>
   );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  switch (status) {
-    case "COMPLETED":
-    case "VERIFIED":
-    case "COMMITTED":
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-700">
-          <CheckCircle2 className="w-3 h-3 mr-0.5" />
-          {status === "COMPLETED" ? "Completed" : status}
-        </span>
-      );
-    case "FAILED":
-    case "REJECTED":
-    case "VERIFY_FAILED":
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-700">
-          <XCircle className="w-3 h-3 mr-0.5" />
-          {status}
-        </span>
-      );
-    case "RUNNING":
-    case "PLANNING":
-    case "EXECUTING":
-    case "AUTHORIZED":
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700 animate-pulse">
-          <PlayCircle className="w-3 h-3 mr-0.5" />
-          {status}
-        </span>
-      );
-    default:
-      return (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600">
-          <Clock className="w-3 h-3 mr-0.5" />
-          {status}
-        </span>
-      );
-  }
 }

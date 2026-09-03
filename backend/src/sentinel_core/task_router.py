@@ -24,6 +24,7 @@ from src.shared.models import (
     JobQueue,
     TaskStatus,
     User,
+    Message,
 )
 from src.shared.schemas import TaskCreate, TaskDetailResponse, TaskResponse, StepResponse
 
@@ -59,7 +60,22 @@ async def create_task(
     # Enqueue in job queue (Postgres-based — Section 2.2)
     job = JobQueue(task_id=task.id, status="pending")
     db.add(job)
-    await db.flush()
+    
+    # Save the task request to the chat history so it shows up in the UI (FR9.3)
+    if request.session_id:
+        user_msg = Message(
+            session_id=uuid.UUID(request.session_id),
+            role="user",
+            content=f"/task {request.goal}",
+        )
+        assistant_msg = Message(
+            session_id=uuid.UUID(request.session_id),
+            role="assistant",
+            content=f"✅ Task created (ID: {task.id}).\n\nGoal: \"{request.goal}\"\nStatus: Accepted — running asynchronously.\n\nYou can monitor progress in **Agent Tasks** or via WebSocket at `/tasks/{task.id}/stream`.",
+        )
+        db.add_all([user_msg, assistant_msg])
+
+    await db.commit()
 
     # Start async processing (in production, a separate worker process picks this up)
     asyncio.create_task(_process_task(str(task.id), str(user.id)))
@@ -106,6 +122,7 @@ async def get_task(
                 status=s.status.value,
                 operation_id=s.operation_id,
                 verification_verdict=s.verification_verdict_json,
+                result=s.result_json,
                 started_at=s.started_at,
                 completed_at=s.completed_at,
             )
@@ -157,6 +174,7 @@ async def list_tasks(
                     status=s.status.value,
                     operation_id=s.operation_id,
                     verification_verdict=s.verification_verdict_json,
+                    result=s.result_json,
                     started_at=s.started_at,
                     completed_at=s.completed_at,
                 )
@@ -250,6 +268,42 @@ async def _process_task(task_id: str, user_id: str) -> None:
             # Update job status
             job.status = "completed" if result.get("status") == "COMPLETED" else "failed"
             job.completed_at = datetime.now(timezone.utc)
+            
+            # Fetch the task to check if it has a session ID
+            task_result = await db.execute(select(AgentTask).where(AgentTask.id == uuid.UUID(task_id)))
+            task = task_result.scalar_one_or_none()
+            
+            if task and task.session_id:
+                if job.status == "completed":
+                    # Get the final step result
+                    steps_result = await db.execute(
+                        select(AgentStep).where(AgentStep.task_id == task.id).order_by(AgentStep.step_order.desc()).limit(1)
+                    )
+                    last_step = steps_result.scalar_one_or_none()
+                    
+                    final_output = "Task completed successfully, but no output was recorded."
+                    if last_step and last_step.result_json:
+                        if isinstance(last_step.result_json, dict) and "output" in last_step.result_json:
+                            final_output = last_step.result_json["output"]
+                        elif isinstance(last_step.result_json, str):
+                            final_output = last_step.result_json
+                        else:
+                            final_output = json.dumps(last_step.result_json, indent=2)
+                            
+                    msg = Message(
+                        session_id=task.session_id,
+                        role="assistant",
+                        content=f"🎉 **Task Completed** (ID: {task.id})\n\n**Result:**\n\n{final_output}\n\n*Click **View Details** in the sidebar to see all steps.*",
+                    )
+                    db.add(msg)
+                else:
+                    msg = Message(
+                        session_id=task.session_id,
+                        role="assistant",
+                        content=f"❌ **Task Failed** (ID: {task.id})\n\nThe background task encountered an error. Click **View Details** in the sidebar to investigate.",
+                    )
+                    db.add(msg)
+
             await db.commit()
 
         except Exception as e:

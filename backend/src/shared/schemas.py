@@ -128,6 +128,7 @@ class StepResponse(BaseModel):
     status: str
     operation_id: str | None = None
     verification_verdict: dict | None = None
+    result: dict | str | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
 
