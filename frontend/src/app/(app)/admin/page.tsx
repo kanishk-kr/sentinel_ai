@@ -57,7 +57,16 @@ export default function AdminPage() {
             <Button 
               variant="outline" 
               className="border-red-200 text-red-600 hover:bg-red-50 text-xs"
-              onClick={() => alert("Initiating Sovereign Lockdown... Disabling all external egress rules at the host firewall level (simulated).")}
+              onClick={async () => {
+                alert("Initiating Sovereign Lockdown... Disabling all external egress rules at the host firewall level (simulated).");
+                try {
+                  await ApiClient.setSecurityMode("sovereign");
+                  window.location.reload();
+                } catch (e) {
+                  console.error("Failed to trigger lockdown", e);
+                  alert("Failed to trigger lockdown");
+                }
+              }}
             >
               <ShieldAlert className="w-3.5 h-3.5 mr-1.5" />
               Trigger Lockdown

@@ -96,6 +96,13 @@ export class ApiClient {
     return this.request("/security/mode");
   }
 
+  static async setSecurityMode(mode: string) {
+    return this.request("/security/mode", {
+      method: "POST",
+      body: JSON.stringify({ mode, admin_password: "admin" }),
+    });
+  }
+
   static async getAuditLog() {
     return this.request("/audit/log");
   }
