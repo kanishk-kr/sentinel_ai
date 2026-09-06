@@ -196,19 +196,20 @@ export default function KnowledgePage() {
                       <th className="px-4 py-2.5 font-medium">Access Tag</th>
                       <th className="px-4 py-2.5 font-medium">Status</th>
                       <th className="px-4 py-2.5 font-medium">Size</th>
+                      <th className="px-4 py-2.5 font-medium text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {loading ? (
                       <tr>
-                        <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
+                        <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
                           <Loader2 className="w-5 h-5 animate-spin mx-auto mb-1" />
                           Loading documents...
                         </td>
                       </tr>
                     ) : documents.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="px-4 py-8 text-center text-gray-400">
+                        <td colSpan={5} className="px-4 py-8 text-center text-gray-400">
                           No documents uploaded yet. Upload a file to begin indexing.
                         </td>
                       </tr>
@@ -224,7 +225,7 @@ export default function KnowledgePage() {
                             {doc.access_tag}
                           </span>
                           {doc.access_tag_status === "PENDING_ADMIN_REVIEW" && (
-                            <AlertTriangle className="inline h-3 w-3 ml-1 text-amber-500" />
+                            <AlertTriangle className="inline h-3 w-3 ml-1 text-amber-500" title="Pending Admin Review" />
                           )}
                         </td>
                         <td className="px-4 py-3">
@@ -238,6 +239,31 @@ export default function KnowledgePage() {
                         </td>
                         <td className="px-4 py-3 text-gray-400">
                           {(doc.file_size_bytes / 1024).toFixed(1)} KB
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {doc.processing_status === "pending" && (
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="h-6 text-[10px] px-2 text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                              onClick={async (e) => {
+                                const target = e.currentTarget;
+                                const originalText = target.innerText;
+                                try {
+                                  target.innerText = "Processing...";
+                                  target.disabled = true;
+                                  await ApiClient.classifyDocument(doc.id, "public");
+                                  await loadDocs(); // Refresh the list
+                                } catch (err) {
+                                  alert("Failed to approve document");
+                                  target.innerText = originalText;
+                                  target.disabled = false;
+                                }
+                              }}
+                            >
+                              Approve
+                            </Button>
+                          )}
                         </td>
                       </tr>
                     ))}

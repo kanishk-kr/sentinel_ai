@@ -98,7 +98,7 @@ async def list_files(
     db: AsyncSession = Depends(get_db),
 ):
     """List all documents."""
-    result = await db.execute(select(KBDocument).order_by(KBDocument.created_at.desc()))
+    result = await db.execute(select(KBDocument).order_by(KBDocument.ingested_at.desc()))
     docs = result.scalars().all()
     return [
         FileUploadResponse(

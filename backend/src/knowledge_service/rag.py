@@ -213,7 +213,7 @@ class RAGService:
             if settings.qdrant_collection not in collection_names:
                 client.create_collection(
                     collection_name=settings.qdrant_collection,
-                    vectors_config=VectorParams(size=768, distance=Distance.COSINE),
+                    vectors_config=VectorParams(size=3072, distance=Distance.COSINE),
                 )
         except Exception as e:
             logger.error(f"Failed to create Qdrant collection: {e}")
@@ -275,24 +275,27 @@ class RAGService:
             )
 
             # Build filter — ACL filter BEFORE scoring (FR5.2)
+            # Build filter — ACL filter BEFORE scoring (FR5.2)
             from qdrant_client.models import FieldCondition, Filter, MatchAny
 
-            tag_filter = Filter(
-                must=[
-                    FieldCondition(
-                        key="access_tag",
-                        match=MatchAny(any=user_tags),
-                    )
-                ]
-            )
+            tag_filter = None
+            if "*" not in user_tags:
+                tag_filter = Filter(
+                    must=[
+                        FieldCondition(
+                            key="access_tag",
+                            match=MatchAny(any=user_tags),
+                        )
+                    ]
+                )
 
             # Search with permission filter
-            results = client.search(
+            results = client.query_points(
                 collection_name=settings.qdrant_collection,
-                query_vector=query_embedding,
+                query=query_embedding,
                 query_filter=tag_filter,
                 limit=top_k,
-            )
+            ).points
 
             # Screen for prompt injection (FR5.3)
             screened_results = []

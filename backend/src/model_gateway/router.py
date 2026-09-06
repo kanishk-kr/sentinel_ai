@@ -121,7 +121,7 @@ class ModelRouter:
             ModelManifestEntry(
                 id="embedding-gemini",
                 provider="gemini",
-                runtime_target="text-embedding-004",
+                runtime_target="gemini-embedding-2",
                 capabilities=["embedding"],
                 context_window=2048,
                 requirements={"vision": False, "tool_calling": False},

@@ -192,6 +192,13 @@ export class ApiClient {
     });
   }
 
+  static async classifyDocument(docId: string, accessTag: string = "general") {
+    return this.request(`/admin/documents/${docId}/classify`, {
+      method: "POST",
+      body: JSON.stringify({ access_tag: accessTag, notes: "Approved via UI" }),
+    });
+  }
+
   // ── Models (FR1, FR1.4 — Model Resource Dashboard) ────────────
   static async listModels() {
     return this.request("/models");

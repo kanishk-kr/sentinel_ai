@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     default_reasoning_model: str = "groq:qwen/qwen3.8-27b"
     default_coding_model: str = "groq:qwen/qwen3.8-27b"
     default_vision_model: str = "gemini:gemini-2.0-flash"
-    default_embedding_model: str = "gemini:text-embedding-004"
+    default_embedding_model: str = "gemini:gemini-embedding-2"
 
     # ── File Storage ──────────────────────────────────────────
     upload_dir: str = "./uploads"
