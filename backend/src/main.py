@@ -41,9 +41,13 @@ async def lifespan(app: FastAPI):
     # Seed default admin user
     await _seed_default_users()
 
+    from src.sentinel_core.job_worker import start_job_worker, stop_job_worker
+    await start_job_worker()
+
     yield
 
     # Shutdown
+    await stop_job_worker()
     await close_db()
     logger.info("SENTINEL shutdown complete")
 

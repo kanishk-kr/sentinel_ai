@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 50
 
     sovereign_mode: bool = True
-    allow_cloud_llms: bool = False
+    allow_cloud_llms: bool = True
     service_token_secret: str = "change_this_service_token_secret"
     service_token_secret_file: str | None = None
     model_signing_public_key_path: str = "./secrets/model_signing_pub.pem"

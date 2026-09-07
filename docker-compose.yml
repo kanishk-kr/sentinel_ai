@@ -11,8 +11,9 @@ services:
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
-      - DB_USER=sentinel_admin
-      - DB_PASS=sentinel_secure_pass_2026
+      - DB_USER=sentinel_app
+      - POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password
+      - POSTGRES_OWNER_PASSWORD_FILE=/run/secrets/postgres_owner_password
       - DB_NAME=sentinel_db
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
@@ -21,9 +22,15 @@ services:
       - SOVEREIGN_MODE=true
     env_file:
       - .env
+    command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "src"]
     volumes:
+      - ./backend/src:/app/src
       - sentinel_artifacts:/app/artifacts
       - ${HOME}:${HOME}
+      - /var/run/docker.sock:/var/run/docker.sock
+    secrets:
+      - postgres_password
+      - postgres_owner_password
     depends_on:
       postgres:
         condition: service_healthy
@@ -54,14 +61,16 @@ services:
     ports:
       - "5432:5432"
     environment:
-      - POSTGRES_USER=sentinel_admin
-      - POSTGRES_PASSWORD=sentinel_secure_pass_2026
+      - POSTGRES_USER=sentinel_owner
+      - POSTGRES_PASSWORD_FILE=/run/secrets/postgres_owner_password
       - POSTGRES_DB=sentinel_db
+    secrets:
+      - postgres_owner_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./docker/configs/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sentinel_admin -d sentinel_db"]
+      test: ["CMD-SHELL", "pg_isready -U sentinel_owner -d sentinel_db"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -97,3 +106,9 @@ volumes:
 networks:
   sentinel_net:
     driver: bridge
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+  postgres_owner_password:
+    file: ./secrets/postgres_owner_password.txt

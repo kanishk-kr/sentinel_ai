@@ -178,8 +178,8 @@ class AuditService:
                 f"{entry.prev_hash}||{payload}".encode()
             ).hexdigest()
 
-            # Note: hash may not match exactly due to timestamp precision
-            # In production, timestamp would be part of the canonical payload
+            if expected_hash != entry.entry_hash:
+                hash_mismatches += 1
 
             prev_hash = entry.entry_hash
             expected_seq = entry.sequence_number + 1

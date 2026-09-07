@@ -47,14 +47,17 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Create all tables on startup."""
+    """Create all tables on startup using owner privileges."""
     import sqlalchemy.exc
     import logging
-    async with engine.begin() as conn:
+    owner_engine = create_async_engine(settings.database_owner_url, echo=settings.debug)
+    async with owner_engine.begin() as conn:
         try:
             await conn.run_sync(Base.metadata.create_all)
         except sqlalchemy.exc.IntegrityError as e:
             logging.getLogger(__name__).warning(f"create_all encountered an integrity error (likely a table exists): {e}")
+    await owner_engine.dispose()
+
 
 
 async def close_db() -> None:

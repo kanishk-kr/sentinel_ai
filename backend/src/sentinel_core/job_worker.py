@@ -67,6 +67,11 @@ async def process_claimed_job(job: JobQueue, db) -> None:
         ws_callback=ws_callback,
     )
 
+    if result.get("status") == "PAUSED":
+        job.status = "completed"
+        job.completed_at = datetime.now(timezone.utc)
+        return
+
     job.status = "completed" if result.get("status") == "COMPLETED" else "failed"
     job.completed_at = datetime.now(timezone.utc)
 

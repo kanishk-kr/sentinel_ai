@@ -186,49 +186,11 @@ async def classify_document(
     # Now trigger ingestion into vector store
     if doc.processing_status == "pending" or doc.processing_status == "completed":
         try:
-            # Read file and create chunks
-            from pathlib import Path
-            file_path = Path(doc.source_path)
-            if file_path.exists():
-                text_content = ""
-                if doc.file_type == "pdf":
-                    try:
-                        from PyPDF2 import PdfReader
-                        reader = PdfReader(str(file_path))
-                        doc.page_count = len(reader.pages)
-                        for i, page in enumerate(reader.pages):
-                            text_content += f"\n--- Page {i+1} ---\n{page.extract_text() or ''}"
-                    except Exception:
-                        text_content = "PDF text extraction failed"
-                elif doc.file_type in ("txt", "md", "csv"):
-                    text_content = file_path.read_text(errors="ignore")
-                elif doc.file_type in ("docx",):
-                    try:
-                        from docx import Document
-                        d = Document(str(file_path))
-                        text_content = "\n".join(p.text for p in d.paragraphs)
-                    except Exception:
-                        text_content = "DOCX extraction failed"
-                else:
-                    text_content = f"File type {doc.file_type} — binary content"
-
-                # Chunk the text
-                chunks = _chunk_text(text_content, chunk_size=500, overlap=50)
-                chunk_dicts = [
-                    {"text": chunk, "title": doc.title, "page_number": i + 1}
-                    for i, chunk in enumerate(chunks)
-                ]
-
-                # Ingest into vector store
-                ingested = await rag_service.ingest_document(
-                    document_id=str(doc.id),
-                    chunks=chunk_dicts,
-                    access_tag=request.access_tag,
-                    db=db,
-                )
-                doc.chunk_count = ingested
-                doc.processing_status = "completed"
-                await db.flush()
+            from src.knowledge_service.pipeline import ingest_document_pipeline
+            ingested = await ingest_document_pipeline(doc, db)
+            doc.chunk_count = ingested
+            doc.processing_status = "completed"
+            await db.flush()
 
         except Exception as e:
             logger.error(f"Document ingestion failed: {e}")

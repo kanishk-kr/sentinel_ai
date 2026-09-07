@@ -158,13 +158,31 @@ class AgentLoop:
                 await self._send_event(ws_callback, task_id, str(step.id), "step_started",
                                        f"Starting: {step.description}")
 
-                # Check policy authorization
-                decision = await policy_gateway.authorize(
-                    action=step.tool_used or "model_invoke",
-                    user=user,
-                    context=CapabilityScopedContext(**task.execution_context_json) if task.execution_context_json else None,
-                    db=db,
-                )
+                # Check for existing approval on resume
+                approval_result = await db.execute(select(Approval).where(Approval.task_step_id == step.id))
+                existing_approval = approval_result.scalar_one_or_none()
+                
+                if existing_approval:
+                    if existing_approval.decision == ApprovalDecision.PENDING:
+                        task.status = TaskStatus.PAUSED
+                        await db.flush()
+                        return {"status": "PAUSED", "reason": "Awaiting human approval"}
+                    elif existing_approval.decision == ApprovalDecision.REJECTED:
+                        step.status = AgentStepStatus.REJECTED
+                        await db.flush()
+                        await self._record_event(db, step.id, "REJECTED", {"reason": "Human denied request"})
+                        continue
+                    # If APPROVED, bypass the policy gateway authorization below
+                    decision = PolicyDecision(allowed=True, reason="Human approved", risk_tier="HIGH", requires_approval=False)
+                else:
+                    # Check policy authorization
+                    decision = await policy_gateway.authorize(
+                        action=step.tool_used or "model_invoke",
+                        user=user,
+                        context=CapabilityScopedContext(**task.execution_context_json) if task.execution_context_json else None,
+                        db=db,
+                        task_step_id=step.id,
+                    )
 
                 if not decision.allowed and not decision.requires_approval:
                     step.status = AgentStepStatus.REJECTED
@@ -182,37 +200,8 @@ class AgentLoop:
                     task.status = TaskStatus.PAUSED
                     await db.flush()
 
-                    # Wait for human approval
-                    approval_id = decision.approval_id
-                    approved = False
-                    while True:
-                        await asyncio.sleep(2)
-                        result = await db.execute(select(Approval).where(Approval.id == uuid.UUID(approval_id)))
-                        approval = result.scalar_one_or_none()
-                        
-                        if not approval:
-                            break
-                        
-                        if approval.decision == ApprovalDecision.APPROVED:
-                            approved = True
-                            break
-                        elif approval.decision == ApprovalDecision.REJECTED:
-                            approved = False
-                            break
-                            
-                    if not approved:
-                        step.status = AgentStepStatus.REJECTED
-                        task.status = TaskStatus.RUNNING
-                        await db.flush()
-                        await self._record_event(db, step.id, "REJECTED", {"reason": "Human denied request"})
-                        await self._send_event(ws_callback, task_id, str(step.id), "rejected",
-                                               f"Human denied execution of: {step.description}")
-                        continue
-                    
-                    # If approved, resume
-                    task.status = TaskStatus.RUNNING
-                    step.status = AgentStepStatus.AUTHORIZED
-                    await db.flush()
+                    # Suspend execution and return control to the worker
+                    return {"status": "PAUSED", "reason": "Awaiting human approval"}
 
                 # EXECUTING
                 step.status = AgentStepStatus.EXECUTING
@@ -221,21 +210,35 @@ class AgentLoop:
                 await self._send_event(ws_callback, task_id, str(step.id), "tool_execution",
                                        f"Executing: {step.tool_used}", tool=step.tool_used)
 
-                # Execute the step
-                try:
-                    result = await self._execute_step(step, task, user, db)
-                    step.input_hash = hashlib.sha256(step.description.encode()).hexdigest()
-                    step.output_hash = hashlib.sha256(str(result).encode()).hexdigest()
-                    step.result_json = {"output": str(result)[:5000]}
-                    final_output = str(result)
-                except Exception as e:
-                    step.status = AgentStepStatus.REJECTED
-                    step.result_json = {"error": str(e)}
-                    step.completed_at = datetime.now(timezone.utc)
-                    await db.flush()
-                    await self._record_event(db, step.id, "EXECUTION_FAILED", {"error": str(e)})
-                    await self._send_event(ws_callback, task_id, str(step.id), "error",
-                                           f"Step failed: {e}")
+                # Execute the step with exponential backoff for rate limits
+                max_retries = 3
+                step_success = False
+                for attempt in range(max_retries):
+                    try:
+                        result = await self._execute_step(step, task, user, db)
+                        step.input_hash = hashlib.sha256(step.description.encode()).hexdigest()
+                        step.output_hash = hashlib.sha256(str(result).encode()).hexdigest()
+                        step.result_json = {"output": str(result)[:5000]}
+                        final_output = str(result)
+                        step_success = True
+                        break
+                    except Exception as e:
+                        if attempt < max_retries - 1 and ("429" in str(e) or "rate limit" in str(e).lower()):
+                            backoff = (2 ** attempt) * 10
+                            logger.warning(f"Rate limit hit for task {task_id}: {e}. Retrying in {backoff}s...")
+                            await self._send_event(ws_callback, task_id, str(step.id), "retrying", f"Rate limit hit. Retrying in {backoff}s...")
+                            await asyncio.sleep(backoff)
+                            continue
+                        
+                        step.status = AgentStepStatus.REJECTED
+                        step.result_json = {"error": str(e)}
+                        step.completed_at = datetime.now(timezone.utc)
+                        await db.flush()
+                        await self._record_event(db, step.id, "EXECUTION_FAILED", {"error": str(e)})
+                        await self._send_event(ws_callback, task_id, str(step.id), "error", f"Step failed: {e}")
+                        break
+
+                if not step_success:
                     continue
 
                 # COMMITTED
@@ -254,7 +257,7 @@ class AgentLoop:
                 await db.flush()
 
                 # VERIFY
-                verdict = await self._verify_step(step, result)
+                verdict = await self._verify_step(step, result, db)
                 step.verification_verdict_json = verdict.model_dump()
                 if verdict.status == "PASS":
                     step.status = AgentStepStatus.VERIFIED
@@ -343,16 +346,36 @@ class AgentLoop:
             return await sandbox_executor.execute(
                 code=step.description,
                 language="python",
+                task_id=str(task.id),
             )
 
         elif tool in ("docx_create", "xlsx_create", "pptx_create"):
             from src.tool_gateway.export import export_service
+            
+            # Find previous RAG chunks in the task context if any
+            metadata = {}
+            previous_steps_result = await db.execute(
+                select(AgentStep)
+                .where(AgentStep.task_id == task.id, AgentStep.tool_used == "rag_search", AgentStep.status == AgentStepStatus.VERIFIED)
+                .order_by(AgentStep.step_order.desc())
+                .limit(1)
+            )
+            last_rag_step = previous_steps_result.scalar_one_or_none()
+            if last_rag_step and last_rag_step.result_json:
+                try:
+                    rag_results = json.loads(last_rag_step.result_json.get("output", "[]"))
+                    if isinstance(rag_results, list) and len(rag_results) > 0:
+                        metadata["sources"] = rag_results
+                except Exception:
+                    pass
+            
             return await export_service.create_document(
                 doc_type=tool.replace("_create", ""),
                 content=step.description,
                 task_id=str(task.id),
                 db=db,
                 user_id=str(user.id),
+                metadata=metadata,
             )
 
         elif tool == "vision_analyze":
@@ -403,17 +426,25 @@ Output ONLY the raw Python code. Do NOT wrap it in markdown backticks (no ```pyt
             code = code.replace("```python", "").replace("```", "").strip()
             
             from src.tool_gateway.sandbox import sandbox_executor
-            return await sandbox_executor.execute(code=code, language="python")
+            return await sandbox_executor.execute(code=code, language="python", task_id=str(task.id))
 
         else:
             raise ValueError(f"Unknown tool: {tool}")
 
-    async def _verify_step(self, step: AgentStep, result: str) -> VerificationVerdict:
+    async def _verify_step(self, step: AgentStep, result: str, db: AsyncSession) -> VerificationVerdict:
         """Verify a step's output based on tool type."""
         tool = step.tool_used or "model_invoke"
 
         if tool == "code_exec":
             return await verification_layer.verify_code(result)
+        elif tool in ("docx_create", "xlsx_create", "pptx_create"):
+            from src.shared.models.artifact_models import ArtifactVersion
+            version_result = await db.execute(
+                select(ArtifactVersion).where(ArtifactVersion.storage_path == result).order_by(ArtifactVersion.created_at.desc()).limit(1)
+            )
+            version = version_result.scalar_one_or_none()
+            metadata = version.metadata_json if version else {}
+            return await verification_layer.verify_export(result, metadata)
         else:
             return await verification_layer.verify_text_output(result)
 

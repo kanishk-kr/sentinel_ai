@@ -52,10 +52,20 @@ async def register_model(
     Register a new model (FR1.5, FR2.1).
     Admin-only. Runs supply-chain verification before making the model selectable.
     """
-    # FR2.1 — Supply-chain verification (simplified for API models)
-    model_hash = hashlib.sha256(
-        f"{request.model_id}:{request.provider}:{request.runtime_target}".encode()
-    ).hexdigest()
+    from src.model_gateway.supply_chain import verify_bundle, SupplyChainRejected
+    
+    try:
+        verification_result = verify_bundle(
+            bundle_path=request.bundle_path if hasattr(request, 'bundle_path') else None,
+            claimed_sha256=request.bundle_sha256 if hasattr(request, 'bundle_sha256') else None,
+            signature=request.signature if hasattr(request, 'signature') else None,
+            capabilities=request.capabilities,
+            requirements=request.requirements,
+            context_window=request.context_window,
+        )
+        model_hash = verification_result["model_hash"]
+    except SupplyChainRejected as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     # Register with the Router
     entry = ModelManifestEntry(

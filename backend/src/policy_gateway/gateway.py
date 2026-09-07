@@ -25,6 +25,10 @@ from src.shared.models import (
     RiskTier,
     User,
     UserRole,
+    AgentStep,
+    AgentTask,
+    JobQueue,
+    TaskStatus,
 )
 from src.shared.schemas import (
     ApprovalDecisionRequest,
@@ -149,6 +153,7 @@ class PolicyGateway:
         user: User,
         context: CapabilityScopedContext | None = None,
         db: AsyncSession | None = None,
+        task_step_id: uuid.UUID | None = None,
     ) -> PolicyDecision:
         """
         Authorize an action against RBAC + risk tiers + execution context (FR3.1).
@@ -186,6 +191,7 @@ class PolicyGateway:
                     decision=ApprovalDecision.PENDING,
                     risk_tier=risk_tier,
                     action_description=f"Action: {action}",
+                    task_step_id=task_step_id,
                 )
                 db.add(approval)
                 await db.flush()
@@ -341,6 +347,19 @@ async def decide_approval(
     approval.comment = request.comment
     approval.decided_at = datetime.now(timezone.utc)
     await db.flush()
+
+    # Re-queue the task to wake up the background worker
+    if approval.task_step_id:
+        step_result = await db.execute(select(AgentStep).where(AgentStep.id == approval.task_step_id))
+        step = step_result.scalar_one_or_none()
+        if step:
+            task_result = await db.execute(select(AgentTask).where(AgentTask.id == step.task_id))
+            task = task_result.scalar_one_or_none()
+            if task and task.status == TaskStatus.PAUSED:
+                task.status = TaskStatus.QUEUED
+                job = JobQueue(task_id=task.id, status="pending")
+                db.add(job)
+                await db.flush()
 
     return ApprovalResponse(
         id=str(approval.id),

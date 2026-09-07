@@ -27,15 +27,24 @@ from src.shared.models import (
     Message,
 )
 from src.shared.schemas import TaskCreate, TaskDetailResponse, TaskResponse, StepResponse
+from src.api_gateway.rate_limiter import RateLimiter
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/tasks", tags=["Tasks"])
+
+# Shared rate limiter instances
+task_rate_limiter = RateLimiter(requests=5, window=60)
 
 # WebSocket connections per task
 ws_connections: dict[str, list[WebSocket]] = {}
 
 
-@router.post("", response_model=TaskResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "",
+    response_model=TaskResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(task_rate_limiter)],
+)
 async def create_task(
     request: TaskCreate,
     user: User = Depends(get_current_user),
@@ -77,8 +86,7 @@ async def create_task(
 
     await db.commit()
 
-    # Start async processing (in production, a separate worker process picks this up)
-    asyncio.create_task(_process_task(str(task.id), str(user.id)))
+    # Task is now handled by the Job Worker started in main.py
 
     return TaskResponse(task_id=str(task.id), status="accepted")
 

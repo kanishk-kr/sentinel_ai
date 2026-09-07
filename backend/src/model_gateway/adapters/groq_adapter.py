@@ -29,7 +29,7 @@ class GroqAdapter(BaseLLMAdapter):
         model: str,
         messages: list[dict],
         temperature: float = 0.7,
-        max_tokens: int = 4096,
+        max_tokens: int = 800,
         stream: bool = False,
     ) -> str:
         """Generate a chat completion via Groq."""
@@ -52,7 +52,7 @@ class GroqAdapter(BaseLLMAdapter):
         prompt: str,
         image_data: bytes | str,
         temperature: float = 0.3,
-        max_tokens: int = 4096,
+        max_tokens: int = 800,
     ) -> str:
         """Groq has limited vision support — delegates to Gemini for vision tasks."""
         # Groq's Llama models with vision support

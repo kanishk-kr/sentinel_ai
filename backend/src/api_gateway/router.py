@@ -37,8 +37,12 @@ from src.shared.schemas import (
     UserCreate,
     UserResponse,
 )
+from src.api_gateway.rate_limiter import RateLimiter
 
 router = APIRouter(prefix="/api/v1", tags=["API Gateway"])
+
+# Shared rate limiter instances
+chat_rate_limiter = RateLimiter(requests=10, window=60)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -256,7 +260,11 @@ async def get_messages(
     ]
 
 
-@router.post("/sessions/{session_id}/messages", response_model=MessageResponse)
+@router.post(
+    "/sessions/{session_id}/messages",
+    response_model=MessageResponse,
+    dependencies=[Depends(chat_rate_limiter)],
+)
 async def create_message(
     session_id: str,
     request: MessageCreate,

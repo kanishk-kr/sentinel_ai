@@ -6,6 +6,8 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     tesseract-ocr \
     libreoffice \
+    poppler-utils \
+    docker.io \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -14,10 +16,13 @@ WORKDIR /app
 COPY backend/pyproject.toml .
 # Normally we would use poetry or pip to install from pyproject.toml
 # For this setup, we'll install directly using pip
-RUN pip install --no-cache-dir \
+ENV PIP_DEFAULT_TIMEOUT=1000
+RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu torch torchvision torchaudio && \
+    pip install --no-cache-dir \
     fastapi uvicorn sqlalchemy asyncpg psycopg2-binary pydantic pydantic-settings \
-    python-jose passlib "bcrypt<4.0.0" groq google-genai qdrant-client \
-    python-docx openpyxl python-pptx PyPDF2 PyYAML python-multipart
+    "python-jose[cryptography]" passlib "bcrypt<4.0.0" groq google-genai qdrant-client \
+    python-docx openpyxl python-pptx PyPDF2 PyYAML python-multipart \
+    pytesseract Pillow pdf2image sentence-transformers httpx aiofiles orjson
 
 # Copy source code
 COPY backend/src /app/src

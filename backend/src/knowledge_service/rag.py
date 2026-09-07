@@ -213,7 +213,7 @@ class RAGService:
             if settings.qdrant_collection not in collection_names:
                 client.create_collection(
                     collection_name=settings.qdrant_collection,
-                    vectors_config=VectorParams(size=3072, distance=Distance.COSINE),
+                    vectors_config=VectorParams(size=768, distance=Distance.COSINE),
                 )
         except Exception as e:
             logger.error(f"Failed to create Qdrant collection: {e}")

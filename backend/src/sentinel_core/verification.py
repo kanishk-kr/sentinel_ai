@@ -130,6 +130,26 @@ Provide your verification verdict as JSON."""},
         status = "PASS" if all(v == "PASS" for v in checks.values()) else "FAILED"
         return VerificationVerdict(status=status, checks=checks, errors=errors, warnings=warnings)
 
+    async def verify_export(self, filepath: str, metadata: dict) -> VerificationVerdict:
+        """Verify document export output, checking for Excel recalculation errors."""
+        checks = {
+            "schema": "PASS",
+            "citations": "PASS",
+            "evidence_support": "PASS",
+            "domain_validation": "PASS",
+        }
+        errors = []
+        warnings = []
+
+        if "excel_recalc_errors" in metadata:
+            recalc_errors = metadata["excel_recalc_errors"]
+            if recalc_errors and len(recalc_errors) > 0:
+                checks["domain_validation"] = "FAIL"
+                errors.extend(recalc_errors)
+        
+        status = "PASS" if all(v == "PASS" for v in checks.values()) else "FAILED"
+        return VerificationVerdict(status=status, checks=checks, errors=errors, warnings=warnings)
+
     async def verify_extraction(
         self,
         extractions: list[dict],
