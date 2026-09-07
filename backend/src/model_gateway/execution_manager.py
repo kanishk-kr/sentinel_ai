@@ -121,12 +121,18 @@ class ModelExecutionManager:
     async def generate_embedding(
         self,
         text: str,
-        model_id: str = "embedding-gemini",
+        model_id: str | None = None,
     ) -> list[float]:
-        """Generate an embedding vector for text."""
+        """Generate an embedding vector for text. Prefers local embedding models."""
+        if model_id is None:
+            if "embedding-local" in model_router.models and model_router.models["embedding-local"].active:
+                model_id = "embedding-local"
+            elif "embedding-gemini" in model_router.models and model_router.models["embedding-gemini"].active:
+                model_id = "embedding-gemini"
+            else:
+                raise ValueError("No embedding model registered")
         info = self._get_model_info(model_id)
         adapter = get_adapter(info["provider"])
-
         return await adapter.generate_embedding(
             model=info["runtime_target"],
             text=text,

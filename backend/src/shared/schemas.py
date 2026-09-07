@@ -394,6 +394,11 @@ class ModelRegisterRequest(BaseModel):
     context_window: int
     latency_class: str = "medium"
     approx_vram_gb: float | None = None
+    bundle_path: str | None = None
+    bundle_sha256: str | None = None
+    signature: str | None = None
+    source: str | None = None
+    version: str | None = None
 
 
 class RoutingResult(BaseModel):
@@ -439,6 +444,16 @@ class PolicyDecision(BaseModel):
     risk_tier: str = "LOW"
     requires_approval: bool = False
     approval_id: str | None = None
+    result: str | None = None
+
+
+class PolicyExecuteRequest(BaseModel):
+    action: str
+    payload: dict = {}
+    context: CapabilityScopedContext | None = None
+    user_id: str
+    approval_granted: bool = False
+    operation_id: str | None = None
 
 
 # ══════════════════════════════════════════════════════════════

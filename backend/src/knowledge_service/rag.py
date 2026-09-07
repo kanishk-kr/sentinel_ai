@@ -224,7 +224,6 @@ class RAGService:
             try:
                 embedding = await execution_manager.generate_embedding(
                     text=chunk["text"],
-                    model_id="embedding-gemini",
                 )
 
                 from qdrant_client.models import PointStruct
@@ -271,7 +270,6 @@ class RAGService:
             # Generate query embedding
             query_embedding = await execution_manager.generate_embedding(
                 text=query,
-                model_id="embedding-gemini",
             )
 
             # Build filter — ACL filter BEFORE scoring (FR5.2)

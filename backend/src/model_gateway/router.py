@@ -55,8 +55,58 @@ class ModelRouter:
         self._load_default_models()
 
     def _load_default_models(self) -> None:
-        """Load default model manifest for Groq + Gemini setup."""
-        default_models = [
+        """Load local Ollama models in Sovereign Mode; cloud models only if explicitly allowed."""
+        default_models: list[ModelManifestEntry] = [
+            ModelManifestEntry(
+                id="reasoning-local",
+                provider="ollama",
+                runtime_target=settings.ollama_reasoning_model,
+                capabilities=[
+                    "general_qa", "planning", "summarization",
+                    "tool_calling", "analysis", "writing",
+                ],
+                context_window=32768,
+                requirements={"vision": False, "tool_calling": True},
+                latency_class="medium",
+                approx_vram_gb=8,
+                active=True,
+            ),
+            ModelManifestEntry(
+                id="coding-local",
+                provider="ollama",
+                runtime_target=settings.ollama_coding_model,
+                capabilities=["code", "code_review", "sandbox_debug", "tool_calling", "planning"],
+                context_window=16384,
+                requirements={"vision": False, "tool_calling": True},
+                latency_class="fast",
+                approx_vram_gb=8,
+                active=True,
+            ),
+            ModelManifestEntry(
+                id="vision-local",
+                provider="ollama",
+                runtime_target=settings.ollama_vision_model,
+                capabilities=["vision", "ocr_assist", "drawing_understanding"],
+                context_window=8192,
+                requirements={"vision": True, "tool_calling": False},
+                latency_class="medium",
+                approx_vram_gb=8,
+                active=True,
+            ),
+            ModelManifestEntry(
+                id="embedding-local",
+                provider="ollama",
+                runtime_target=settings.ollama_embed_model,
+                capabilities=["embedding"],
+                context_window=8192,
+                requirements={"vision": False, "tool_calling": False},
+                latency_class="fast",
+                approx_vram_gb=1,
+                active=True,
+            ),
+        ]
+        if settings.allow_cloud_llms:
+            default_models.extend([
             ModelManifestEntry(
                 id="reasoning-groq",
                 provider="groq",
@@ -127,7 +177,7 @@ class ModelRouter:
                 requirements={"vision": False, "tool_calling": False},
                 latency_class="fast",
             ),
-        ]
+            ])
         for model in default_models:
             self.models[model.id] = model
 
