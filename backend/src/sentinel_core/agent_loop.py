@@ -6,6 +6,7 @@ Crash-safe resume via checkpoints. All downstream calls go through Policy Gatewa
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -26,6 +27,8 @@ from src.shared.models import (
     AgentStep,
     AgentStepStatus,
     AgentTask,
+    Approval,
+    ApprovalDecision,
     RiskTier,
     TaskStatus,
     User,
@@ -61,6 +64,18 @@ class AgentLoop:
         if not task:
             raise ValueError(f"Task {task_id} not found")
 
+        # Determine allowed paths based on project
+        allowed_paths = [f"/workspace/{task_id}"]
+        if task.session_id:
+            from src.shared.models import Session, Project
+            session_result = await db.execute(select(Session).where(Session.id == task.session_id))
+            session_obj = session_result.scalar_one_or_none()
+            if session_obj and session_obj.project_id:
+                project_result = await db.execute(select(Project).where(Project.id == session_obj.project_id))
+                project_obj = project_result.scalar_one_or_none()
+                if project_obj:
+                    allowed_paths.append(project_obj.working_dir)
+
         task.status = TaskStatus.PLANNING
         await db.flush()
         self.active_tasks[task_id] = "PLANNING"
@@ -83,7 +98,7 @@ class AgentLoop:
                     user=str(user.id),
                     user_role=user.role.value,
                     allowed_tools=tools_needed,
-                    allowed_paths=[f"/workspace/{task_id}"],
+                    allowed_paths=allowed_paths,
                     network="none",
                     max_iterations=len(plan.get("steps", [])) + 5,
                     max_runtime_seconds=300,
@@ -163,8 +178,39 @@ class AgentLoop:
                     await self._send_event(ws_callback, task_id, str(step.id), "awaiting_approval",
                                            f"Awaiting human approval for: {step.description}",
                                            risk_tier=decision.risk_tier)
-                    # In a full implementation, this would pause and wait for approval
-                    # For demo, we auto-approve LOW/MEDIUM and flag HIGH
+                    
+                    task.status = TaskStatus.PAUSED
+                    await db.flush()
+
+                    # Wait for human approval
+                    approval_id = decision.approval_id
+                    approved = False
+                    while True:
+                        await asyncio.sleep(2)
+                        result = await db.execute(select(Approval).where(Approval.id == uuid.UUID(approval_id)))
+                        approval = result.scalar_one_or_none()
+                        
+                        if not approval:
+                            break
+                        
+                        if approval.decision == ApprovalDecision.APPROVED:
+                            approved = True
+                            break
+                        elif approval.decision == ApprovalDecision.REJECTED:
+                            approved = False
+                            break
+                            
+                    if not approved:
+                        step.status = AgentStepStatus.REJECTED
+                        task.status = TaskStatus.RUNNING
+                        await db.flush()
+                        await self._record_event(db, step.id, "REJECTED", {"reason": "Human denied request"})
+                        await self._send_event(ws_callback, task_id, str(step.id), "rejected",
+                                               f"Human denied execution of: {step.description}")
+                        continue
+                    
+                    # If approved, resume
+                    task.status = TaskStatus.RUNNING
                     step.status = AgentStepStatus.AUTHORIZED
                     await db.flush()
 
@@ -278,6 +324,8 @@ class AgentLoop:
                 model_id=routing.model_id,
                 messages=messages,
                 temperature=0.7,
+                db=db,
+                actor=str(user.id),
             )
 
         elif tool == "rag_search":
@@ -303,6 +351,8 @@ class AgentLoop:
                 doc_type=tool.replace("_create", ""),
                 content=step.description,
                 task_id=str(task.id),
+                db=db,
+                user_id=str(user.id),
             )
 
         elif tool == "vision_analyze":
@@ -316,11 +366,44 @@ class AgentLoop:
             # Vision analysis would process attached images
             return "Vision analysis completed"
 
-        elif tool == "fs_read":
-            return "File read operation completed"
+        elif tool in ("fs_read", "fs_write"):
+            # Turn natural language description into Python code that reads/writes files
+            routing = model_router.route({
+                "capabilities": ["code"],
+                "vision": False,
+                "min_context": 4096,
+            })
+            if routing.status == "ROUTING_FAILURE":
+                raise RuntimeError(f"No model available for file ops: {routing.reason}")
 
-        elif tool == "fs_write":
-            return "File write operation completed"
+            allowed_paths = task.execution_context_json.get("allowed_paths", []) if task.execution_context_json else []
+            
+            prompt = f"""You are an autonomous agent executing a file system operation.
+Task Goal: {task.goal}
+Step Description: {step.description}
+Allowed Paths: {allowed_paths}
+
+Write a Python script to perform this file system operation.
+The script MUST:
+1. ONLY read/write within the Allowed Paths.
+2. Print the results (e.g., file contents, directory tree) to stdout so they can be captured.
+3. Handle missing files gracefully and print a clear error if the file is not found.
+4. If the output is extremely large, print only the first 5000 characters or summarize it.
+
+Output ONLY the raw Python code. Do NOT wrap it in markdown backticks (no ```python). Do NOT explain anything."""
+            
+            code = await execution_manager.invoke(
+                model_id=routing.model_id,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                db=db,
+                actor=str(user.id),
+            )
+            # Clean up markdown formatting if the model still outputs it
+            code = code.replace("```python", "").replace("```", "").strip()
+            
+            from src.tool_gateway.sandbox import sandbox_executor
+            return await sandbox_executor.execute(code=code, language="python")
 
         else:
             raise ValueError(f"Unknown tool: {tool}")

@@ -101,6 +101,7 @@ async def rate_limit_middleware(request: Request, call_next):
 
 # ── Register Routers ─────────────────────────────────────────
 from src.api_gateway.router import router as api_gateway_router
+from src.api_gateway.projects_api import router as projects_router
 from src.model_gateway.api import router as model_gateway_router
 from src.policy_gateway.gateway import router as policy_gateway_router
 from src.sentinel_core.task_router import router as task_router
@@ -109,6 +110,7 @@ from src.knowledge_service.api import router as knowledge_router
 from src.security.audit_log import router as security_router
 
 app.include_router(api_gateway_router)
+app.include_router(projects_router)
 app.include_router(model_gateway_router)
 app.include_router(policy_gateway_router)
 app.include_router(task_router)

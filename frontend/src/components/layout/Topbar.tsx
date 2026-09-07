@@ -29,7 +29,11 @@ export function Topbar({ toggleSidebar }: { toggleSidebar: () => void }) {
     loadMode();
   }, []);
 
-  const isSovereign = mode?.current_mode === "SOVEREIGN";
+
+
+  const currentMode = mode?.current_mode || "sovereign";
+  const isHybrid = currentMode === "hybrid";
+  const isSovereign = currentMode === "sovereign";
 
   return (
     <header className="h-12 flex items-center justify-between px-4 sticky top-0 z-40 bg-white border-b border-gray-100">
@@ -43,16 +47,18 @@ export function Topbar({ toggleSidebar }: { toggleSidebar: () => void }) {
           <div className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide border ${
             isSovereign
               ? "bg-red-50 text-red-700 border-red-200"
-              : "bg-amber-50 text-amber-700 border-amber-200"
+              : isHybrid 
+                ? "bg-purple-50 text-purple-700 border-purple-200"
+                : "bg-amber-50 text-amber-700 border-amber-200"
           }`}>
-            {isSovereign ? (
+            {isSovereign || isHybrid ? (
               <ShieldAlert className="h-3 w-3" />
             ) : (
               <Shield className="h-3 w-3" />
             )}
-            <span>{isSovereign ? "SOVEREIGN MODE" : "CONTROLLED MODE"}</span>
+            <span>{mode.banner_text.split("—")[0].trim()}</span>
             <span className="text-[10px] opacity-70 ml-1">
-              — Internet: {mode.internet_status === "blocked" ? "Blocked" : "Restricted"}
+              — {mode.banner_text.split("—")[1]?.trim()}
             </span>
           </div>
         )}

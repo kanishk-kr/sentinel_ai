@@ -50,12 +50,14 @@ class UserResponse(BaseModel):
 # ══════════════════════════════════════════════════════════════
 class SessionCreate(BaseModel):
     title: str = "New Chat"
+    project_id: str | None = None
 
 
 class SessionResponse(BaseModel):
     id: str
     user_id: str
     title: str
+    project_id: str | None = None
     created_at: datetime
     updated_at: datetime
     message_count: int = 0

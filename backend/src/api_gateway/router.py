@@ -82,7 +82,7 @@ async def register(
         username=request.username,
         email=request.email,
         password_hash=hash_password(request.password),
-        role=UserRole(request.role) if request.role in [r.value for r in UserRole] else UserRole.VIEWER,
+        role=UserRole.VIEWER,  # Hardcoded to prevent privilege escalation via request
         access_tags=["general"],  # Default access tag
     )
     db.add(user)
@@ -121,7 +121,11 @@ async def create_session(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new chat session."""
-    session = Session(user_id=user.id, title=request.title)
+    session = Session(
+        user_id=user.id,
+        title=request.title,
+        project_id=uuid.UUID(request.project_id) if request.project_id else None,
+    )
     db.add(session)
     await db.flush()
     await db.refresh(session)
@@ -129,6 +133,7 @@ async def create_session(
         id=str(session.id),
         user_id=str(session.user_id),
         title=session.title,
+        project_id=str(session.project_id) if session.project_id else None,
         created_at=session.created_at,
         updated_at=session.updated_at,
         message_count=0,
@@ -159,6 +164,7 @@ async def list_sessions(
                 id=str(s.id),
                 user_id=str(s.user_id),
                 title=s.title,
+                project_id=str(s.project_id) if s.project_id else None,
                 created_at=s.created_at,
                 updated_at=s.updated_at,
                 message_count=msg_count,
@@ -189,6 +195,7 @@ async def get_session(
         id=str(session.id),
         user_id=str(session.user_id),
         title=session.title,
+        project_id=str(session.project_id) if session.project_id else None,
         created_at=session.created_at,
         updated_at=session.updated_at,
         message_count=msg_count,
@@ -300,14 +307,29 @@ async def create_message(
         )
 
     # Build messages for LLM
-    llm_messages = [
-        {"role": "system", "content": (
-            "You are SENTINEL, a sovereign AI workbench assistant. "
-            "You help users with document analysis, code generation, data processing, and knowledge retrieval. "
-            "Always provide accurate, well-cited responses. "
-            "When referencing documents, cite specific pages and sections."
-        )}
-    ]
+    system_prompt = (
+        "You are SENTINEL, a sovereign AI workbench assistant. "
+        "You help users with document analysis, code generation, data processing, and knowledge retrieval. "
+        "Always provide accurate, well-cited responses. "
+        "When referencing documents, cite specific pages and sections."
+    )
+
+    # If linked to a project, inject project context and guide user to use /task
+    if session.project_id:
+        from src.shared.models import Project
+        project_result = await db.execute(select(Project).where(Project.id == session.project_id))
+        project = project_result.scalar_one_or_none()
+        if project:
+            system_prompt += (
+                f"\n\nThe user is currently working in the project '{project.name}'. "
+                f"The project's local working directory is: {project.working_dir} "
+                "\nIMPORTANT: In this normal chat mode, you DO NOT have tools to read the local filesystem directly. "
+                "If the user asks you to analyze their codebase, run a script, or read their files, you MUST instruct them "
+                "to use the `/task <goal>` command (e.g., `/task analyze the codebase`). The `/task` command spawns an autonomous agent "
+                "that has full access to filesystem and terminal tools."
+            )
+
+    llm_messages = [{"role": "system", "content": system_prompt}]
     for msg in history:
         llm_messages.append({"role": msg.role, "content": msg.content})
 
@@ -316,6 +338,8 @@ async def create_message(
         response_text = await execution_manager.invoke(
             model_id=routing.model_id,
             messages=llm_messages,
+            db=db,
+            actor=str(user.id),
         )
     except Exception as e:
         response_text = f"I encountered an error processing your request: {str(e)}"

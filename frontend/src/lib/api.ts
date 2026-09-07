@@ -115,15 +115,27 @@ export class ApiClient {
     return this.request("/security/network-monitor");
   }
 
+  // ── Approvals (FR3.6) ─────────────────────────────────────────
+  static async getPendingApprovals() {
+    return this.request("/policy/pending-approvals");
+  }
+
+  static async decideApproval(approvalId: string, decision: "APPROVED" | "REJECTED") {
+    return this.request(`/policy/approvals/${approvalId}`, {
+      method: "POST",
+      body: JSON.stringify({ decision }),
+    });
+  }
+
   // ── Sessions (FR9.3 — persistent chat history) ────────────────
   static async listSessions() {
     return this.request("/sessions");
   }
 
-  static async createSession(title: string = "New Chat") {
+  static async createSession(title: string = "New Chat", projectId?: string) {
     return this.request("/sessions", {
       method: "POST",
-      body: JSON.stringify({ title }),
+      body: JSON.stringify({ title, project_id: projectId || null }),
     });
   }
 
@@ -209,5 +221,41 @@ export class ApiClient {
   // ── Models (FR1, FR1.4 — Model Resource Dashboard) ────────────
   static async listModels() {
     return this.request("/models");
+  }
+
+  // ── Projects ──────────────────────────────────────────────────
+  static async listProjects() {
+    return this.request("/projects");
+  }
+
+  static async createProject(name: string, description: string, workingDir: string) {
+    return this.request("/projects", {
+      method: "POST",
+      body: JSON.stringify({ name, description, working_dir: workingDir }),
+    });
+  }
+
+  static async getProject(projectId: string) {
+    return this.request(`/projects/${projectId}`);
+  }
+
+  static async updateProject(projectId: string, data: { name?: string; description?: string; working_dir?: string }) {
+    return this.request(`/projects/${projectId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  static async deleteProject(projectId: string) {
+    return this.request(`/projects/${projectId}`, { method: "DELETE" });
+  }
+
+  static async listProjectFiles(projectId: string, path: string = "") {
+    const params = path ? `?path=${encodeURIComponent(path)}` : "";
+    return this.request(`/projects/${projectId}/files${params}`);
+  }
+
+  static async getFileContent(projectId: string, path: string) {
+    return this.request(`/projects/${projectId}/files/content?path=${encodeURIComponent(path)}`);
   }
 }

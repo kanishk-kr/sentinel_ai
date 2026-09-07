@@ -11,6 +11,7 @@ export default function AppLayout({
   children: React.ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [activeProjectId, setActiveProjectId] = React.useState<string | null>(null);
   const params = useParams();
   
   // Extract session ID from the URL if we are on a chat route (/c/[id])
@@ -22,6 +23,8 @@ export default function AppLayout({
         isOpen={sidebarOpen} 
         toggleSidebar={() => setSidebarOpen(!sidebarOpen)}
         activeSessionId={activeSessionId}
+        activeProjectId={activeProjectId}
+        onProjectSelect={(projectId) => setActiveProjectId(projectId)}
       />
       
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative z-10 bg-white">

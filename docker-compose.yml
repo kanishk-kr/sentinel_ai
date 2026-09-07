@@ -23,6 +23,7 @@ services:
       - .env
     volumes:
       - sentinel_artifacts:/app/artifacts
+      - ${HOME}:${HOME}
     depends_on:
       postgres:
         condition: service_healthy

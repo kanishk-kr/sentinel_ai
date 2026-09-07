@@ -90,7 +90,7 @@ TOOL_RISK_MAP = {
     "docx_create": RiskTier.MEDIUM,
     "xlsx_create": RiskTier.MEDIUM,
     "pptx_create": RiskTier.MEDIUM,
-    "code_exec": RiskTier.MEDIUM,
+    "code_exec": RiskTier.HIGH,
     "admin_classify": RiskTier.MEDIUM,
     "artifact_finalize": RiskTier.HIGH,
     "controlled_egress": RiskTier.HIGH,
@@ -201,7 +201,23 @@ class PolicyGateway:
 
     def get_mode(self) -> SecurityModeResponse:
         """Get current security mode (FR7.1, FR7.2)."""
-        if self.sovereign_mode:
+        from src.model_gateway.router import model_router
+        
+        has_cloud_apis = False
+        for model in model_router.models.values():
+            if model.active and model.provider in ["groq", "gemini", "openai", "anthropic"]:
+                has_cloud_apis = True
+                break
+
+        if has_cloud_apis:
+            return SecurityModeResponse(
+                current_mode="hybrid",
+                sovereign_mode=False,
+                internet_status="hybrid",
+                banner_text="HYBRID MODE — Cloud APIs Active",
+                last_changed=self._mode_last_changed,
+            )
+        elif self.sovereign_mode:
             return SecurityModeResponse(
                 current_mode="sovereign",
                 sovereign_mode=True,

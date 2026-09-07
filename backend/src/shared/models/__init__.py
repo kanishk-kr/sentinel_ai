@@ -13,6 +13,7 @@ from src.shared.models.ops_models import (
     JobQueue,
     Message,
     ModelRegistry,
+    Project,
     RiskTier,
     Session,
     TaskStatus,
@@ -43,7 +44,7 @@ from src.shared.models.audit_models import (
 
 __all__ = [
     # Ops
-    "User", "UserRole", "Session", "Message",
+    "User", "UserRole", "Session", "Message", "Project",
     "AgentTask", "TaskStatus", "AgentStep", "AgentStepStatus",
     "AgentEvent", "AgentCheckpoint", "Approval", "ApprovalDecision",
     "ModelRegistry", "RiskTier", "JobQueue",

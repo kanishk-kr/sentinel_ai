@@ -82,6 +82,27 @@ class User(Base):
 
     # Relationships
     sessions: Mapped[list["Session"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    projects: Mapped[list["Project"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+
+
+# ── Projects ──────────────────────────────────────────────────
+class Project(Base):
+    __tablename__ = "projects"
+    __table_args__ = {"schema": "ops"}
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("ops.users.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    working_dir: Mapped[str] = mapped_column(String(1000), nullable=False)  # Host path selected by user
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    # Relationships
+    user: Mapped["User"] = relationship(back_populates="projects")
+    sessions: Mapped[list["Session"]] = relationship(back_populates="project", cascade="all, delete-orphan")
 
 
 # ── Sessions ──────────────────────────────────────────────────
@@ -91,6 +112,7 @@ class Session(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("ops.users.id"), nullable=False)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("ops.projects.id"), nullable=True)
     title: Mapped[str] = mapped_column(String(500), default="New Chat")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -99,6 +121,7 @@ class Session(Base):
 
     # Relationships
     user: Mapped["User"] = relationship(back_populates="sessions")
+    project: Mapped["Project | None"] = relationship(back_populates="sessions")
     messages: Mapped[list["Message"]] = relationship(back_populates="session", cascade="all, delete-orphan")
 
 

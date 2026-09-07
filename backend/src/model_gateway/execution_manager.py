@@ -46,6 +46,8 @@ class ModelExecutionManager:
         messages: list[dict],
         temperature: float = 0.7,
         max_tokens: int = 4096,
+        db=None,
+        actor: str = "SYSTEM",
     ) -> str:
         """
         Invoke a model for chat completion.
@@ -71,6 +73,22 @@ class ModelExecutionManager:
             "last_used": self.last_used[model_id].isoformat(),
             "request_count": self.request_count[model_id],
         }
+
+        # Write to audit log if db is provided
+        if db:
+            import hashlib
+            from src.security.audit_log import audit_service
+            import json
+            input_hash = hashlib.sha256(json.dumps(messages).encode()).hexdigest()
+            await audit_service.log(
+                db=db,
+                entry_type="model_invoke",
+                actor=actor,
+                action=f"invoke_{model_id}",
+                input_hash=input_hash,
+                allowed=True,
+                risk_tier="LOW",
+            )
 
         return result
 

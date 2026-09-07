@@ -48,8 +48,13 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_db() -> None:
     """Create all tables on startup."""
+    import sqlalchemy.exc
+    import logging
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        try:
+            await conn.run_sync(Base.metadata.create_all)
+        except sqlalchemy.exc.IntegrityError as e:
+            logging.getLogger(__name__).warning(f"create_all encountered an integrity error (likely a table exists): {e}")
 
 
 async def close_db() -> None:

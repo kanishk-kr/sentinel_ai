@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ArrowRight, Bot, User, Loader2, Plus, ChevronDown, BookOpen, ExternalLink } from "lucide-react";
+import { ArrowRight, Bot, User, Loader2, Plus, ChevronDown, BookOpen, ExternalLink, Folder, Shield } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ApiClient } from "@/lib/api";
 import ReactMarkdown from "react-markdown";
@@ -9,6 +9,7 @@ import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { materialLight } from "react-syntax-highlighter/dist/cjs/styles/prism";
 import { TaskDetailPanel } from "@/components/chat/TaskDetailPanel";
+import { FileExplorerPane } from "@/components/chat/FileExplorerPane";
 
 interface Citation {
   document_title?: string;
@@ -55,6 +56,30 @@ export function ChatInterface({
   const [sidebarTaskDetail, setSidebarTaskDetail] = React.useState<any>(null);
   const [sidebarLoading, setSidebarLoading] = React.useState(false);
 
+  // Projects state
+  const [projects, setProjects] = React.useState<any[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = React.useState<string | null>(null);
+  const [showProjectPicker, setShowProjectPicker] = React.useState(false);
+  
+  // Current session state
+  const [currentSession, setCurrentSession] = React.useState<any>(null);
+
+  // Load projects
+  React.useEffect(() => {
+    ApiClient.listProjects()
+      .then(data => {
+        setProjects(data.projects || []);
+        if (data.projects?.length > 0 && !selectedProjectId) {
+          // Default to first project if none selected
+          setSelectedProjectId(data.projects[0].id);
+        }
+      })
+      .catch(err => console.error("Failed to load projects", err));
+  }, []);
+
+  // Approvals state
+  const [pendingApprovals, setPendingApprovals] = React.useState<any[]>([]);
+
   // Load task details when sidebar opens
   React.useEffect(() => {
     if (sidebarTaskId) {
@@ -85,12 +110,32 @@ export function ChatInterface({
     }
   }, [externalSessionId]);
 
+  // Poll for pending approvals
+  React.useEffect(() => {
+    const fetchApprovals = async () => {
+      try {
+        const approvals = await ApiClient.getPendingApprovals();
+        setPendingApprovals(approvals || []);
+      } catch (err) {
+        // ignore polling errors
+      }
+    };
+    
+    fetchApprovals();
+    const interval = setInterval(fetchApprovals, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Load existing session messages (FR9.3 — resume)
   React.useEffect(() => {
     if (sessionId) {
       loadSessionMessages(sessionId);
+      ApiClient.getSession(sessionId)
+        .then(data => setCurrentSession(data))
+        .catch(err => console.error("Failed to load session", err));
     } else {
       setMessages([]);
+      setCurrentSession(null);
     }
   }, [sessionId]);
 
@@ -137,8 +182,9 @@ export function ChatInterface({
     try {
       let currentSessionId = sessionId;
       if (!currentSessionId) {
-        const session = await ApiClient.createSession(userText.substring(0, 80));
+        const session = await ApiClient.createSession(userText.substring(0, 80), selectedProjectId || undefined);
         currentSessionId = session.id;
+        setCurrentSession(session);
         setSessionId(currentSessionId);
         onSessionCreated?.(currentSessionId);
         // Shallow update URL without unmounting the component while it waits for the LLM response
@@ -187,7 +233,58 @@ export function ChatInterface({
   const isEmpty = messages.length === 0;
 
   return (
-    <div className="flex flex-col h-full bg-white overflow-hidden">
+    <div className="flex h-full w-full overflow-hidden bg-white">
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+        {/* Pending Approvals Banner */}
+        {pendingApprovals.length > 0 && (
+          <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 flex flex-col space-y-2">
+            <div className="flex items-center text-amber-800 font-semibold text-sm">
+              <Shield size={16} className="mr-2" />
+              Pending Human Approvals ({pendingApprovals.length})
+            </div>
+            {pendingApprovals.map((approval) => (
+              <div key={approval.id} className="bg-white border border-amber-200 rounded p-3 flex items-center justify-between shadow-sm">
+                <div>
+                  <div className="text-sm font-medium text-gray-800">{approval.action_description}</div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    Risk Tier: <span className="font-semibold">{approval.risk_tier}</span> | 
+                    Requested: {new Date(approval.created_at).toLocaleString()}
+                  </div>
+                </div>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={async () => {
+                      try {
+                        await ApiClient.decideApproval(approval.id, "REJECTED");
+                        setPendingApprovals(prev => prev.filter(a => a.id !== approval.id));
+                      } catch (e) {
+                        alert("Failed to reject approval");
+                      }
+                    }}
+                    className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded transition-colors border border-red-200"
+                  >
+                    Deny
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        await ApiClient.decideApproval(approval.id, "APPROVED");
+                        setPendingApprovals(prev => prev.filter(a => a.id !== approval.id));
+                      } catch (e) {
+                        alert("Failed to approve");
+                      }
+                    }}
+                    className="px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded transition-colors border border-emerald-200"
+                  >
+                    Approve
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Messages Area */}
         {!isEmpty && (
           <div 
@@ -348,9 +445,63 @@ export function ChatInterface({
       }`}>
         
         {isEmpty && (
-          <div className="mb-6 flex items-center space-x-2 text-gray-400 font-medium text-sm">
-            <span>New Conversation</span>
-            <ChevronDown size={14} />
+          <div className="mb-6 flex flex-col items-center">
+            <div className="flex items-center space-x-2 text-gray-400 font-medium text-sm mb-2">
+              <span>New Conversation</span>
+            </div>
+            
+            <div className="relative">
+              <button 
+                onClick={() => setShowProjectPicker(!showProjectPicker)}
+                className="flex items-center space-x-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-[13px] font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
+              >
+                <Folder size={14} className="text-indigo-500" />
+                <span>
+                  {selectedProjectId 
+                    ? projects.find(p => p.id === selectedProjectId)?.name || "Unknown Project"
+                    : "No Project (Global)"}
+                </span>
+                <ChevronDown size={14} className="text-gray-400" />
+              </button>
+
+              {showProjectPicker && (
+                <div className="absolute top-full mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 max-h-64 overflow-y-auto">
+                  <button
+                    onClick={() => {
+                      setSelectedProjectId(null);
+                      setShowProjectPicker(false);
+                    }}
+                    className={`w-full text-left px-3 py-2 text-[13px] hover:bg-gray-50 flex items-center space-x-2 ${
+                      selectedProjectId === null ? "bg-indigo-50 text-indigo-700" : "text-gray-700"
+                    }`}
+                  >
+                    <Folder size={14} className="text-gray-400" />
+                    <span>No Project (Global)</span>
+                  </button>
+                  <div className="border-t border-gray-100 my-1"></div>
+                  {projects.map(project => (
+                    <button
+                      key={project.id}
+                      onClick={() => {
+                        setSelectedProjectId(project.id);
+                        setShowProjectPicker(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-[13px] hover:bg-gray-50 flex items-center space-x-2 ${
+                        selectedProjectId === project.id ? "bg-indigo-50 text-indigo-700" : "text-gray-700"
+                      }`}
+                    >
+                      <Folder size={14} className="text-indigo-500" />
+                      <span className="truncate flex-1">{project.name}</span>
+                      {project.working_dir && (
+                        <span className="text-[10px] text-gray-400 truncate max-w-[80px]" title={project.working_dir}>
+                          {project.working_dir.split('/').pop()}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -400,6 +551,12 @@ export function ChatInterface({
           </p>
         )}
       </div>
+      </div>
+      
+      {/* File Explorer Right Pane (Phase 7) */}
+      {currentSession?.project_id && (
+        <FileExplorerPane projectId={currentSession.project_id} />
+      )}
     </div>
   );
 }

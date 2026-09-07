@@ -84,19 +84,46 @@ class ExportService:
         task_id: str,
         title: str = "SENTINEL Generated Document",
         metadata: dict | None = None,
+        db = None,
+        user_id: str | None = None,
     ) -> str:
-        """Create a document and return the file path."""
+        """Create a document, insert DB records, and return the file path."""
         output_dir = settings.artifact_store_path / task_id
         output_dir.mkdir(parents=True, exist_ok=True)
 
         if doc_type == "docx":
-            return await self._create_docx(content, title, output_dir, metadata)
+            filepath = await self._create_docx(content, title, output_dir, metadata)
         elif doc_type == "xlsx":
-            return await self._create_xlsx(content, title, output_dir, metadata)
+            filepath = await self._create_xlsx(content, title, output_dir, metadata)
         elif doc_type == "pptx":
-            return await self._create_pptx(content, title, output_dir, metadata)
+            filepath = await self._create_pptx(content, title, output_dir, metadata)
         else:
             raise ValueError(f"Unsupported document type: {doc_type}")
+            
+        if db:
+            import uuid
+            from src.shared.models.artifact_models import Artifact, ArtifactVersion, ArtifactType, ArtifactStatus
+            
+            artifact = Artifact(
+                task_id=uuid.UUID(task_id),
+                artifact_type=ArtifactType(doc_type),
+                title=title,
+                current_version=1,
+                status=ArtifactStatus.DRAFT,
+            )
+            db.add(artifact)
+            await db.flush()
+            
+            version = ArtifactVersion(
+                artifact_id=artifact.id,
+                version_number=1,
+                storage_path=filepath,
+                generating_model="sandbox",
+            )
+            db.add(version)
+            await db.flush()
+
+        return filepath
 
     async def _create_docx(
         self,
