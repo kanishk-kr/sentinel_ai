@@ -20,9 +20,10 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - APP_ENV=production
       - SOVEREIGN_MODE=true
+      - SENTINEL_ALLOW_HOST_SANDBOX=1
     env_file:
       - .env
-    command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "src"]
+    command: [ "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "src" ]
     volumes:
       - ./backend/src:/app/src
       - sentinel_artifacts:/app/artifacts
@@ -39,7 +40,10 @@ services:
       redis:
         condition: service_started
     networks:
-      - sentinel_net
+      - frontend_net
+      - backend_net
+      - db_net
+      - sandbox_net
 
   # ── Frontend Web App ──
   frontend:
@@ -53,7 +57,7 @@ services:
     depends_on:
       - backend
     networks:
-      - sentinel_net
+      - frontend_net
 
   # ── Database (PostgreSQL) ──
   postgres:
@@ -65,17 +69,18 @@ services:
       - POSTGRES_PASSWORD_FILE=/run/secrets/postgres_owner_password
       - POSTGRES_DB=sentinel_db
     secrets:
+      - postgres_password
       - postgres_owner_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./docker/configs/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+      - ./docker/configs/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sentinel_owner -d sentinel_db"]
+      test: [ "CMD-SHELL", "pg_isready -U sentinel_owner -d sentinel_db" ]
       interval: 5s
       timeout: 5s
       retries: 5
     networks:
-      - sentinel_net
+      - db_net
 
   # ── Vector Database (Qdrant) ──
   qdrant:
@@ -85,7 +90,7 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
     networks:
-      - sentinel_net
+      - db_net
 
   # ── In-Memory Cache & Message Broker (Redis) ──
   redis:
@@ -95,7 +100,7 @@ services:
     volumes:
       - redis_data:/data
     networks:
-      - sentinel_net
+      - db_net
 
 volumes:
   postgres_data:
@@ -104,7 +109,13 @@ volumes:
   sentinel_artifacts:
 
 networks:
-  sentinel_net:
+  frontend_net:
+    driver: bridge
+  backend_net:
+    driver: bridge
+  db_net:
+    driver: bridge
+  sandbox_net:
     driver: bridge
 
 secrets:

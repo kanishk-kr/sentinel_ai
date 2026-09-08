@@ -123,14 +123,14 @@ class ModelExecutionManager:
         text: str,
         model_id: str | None = None,
     ) -> list[float]:
-        """Generate an embedding vector for text. Prefers local embedding models."""
+        """Generate an embedding vector for text using the best available model."""
         if model_id is None:
-            if "embedding-local" in model_router.models and model_router.models["embedding-local"].active:
-                model_id = "embedding-local"
-            elif "embedding-gemini" in model_router.models and model_router.models["embedding-gemini"].active:
-                model_id = "embedding-gemini"
-            else:
-                raise ValueError("No embedding model registered")
+            # Let the router pick the best embedding model respecting allow_cloud_llms
+            routing = model_router.route({"capabilities": ["embedding"]})
+            if routing.status != "OK" or not routing.model_id:
+                raise ValueError(f"No active embedding model registered: {routing.unmet_requirements}")
+            model_id = routing.model_id
+            
         info = self._get_model_info(model_id)
         adapter = get_adapter(info["provider"])
         return await adapter.generate_embedding(

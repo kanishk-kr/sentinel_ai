@@ -33,7 +33,7 @@ from src.shared.models import (
     TaskStatus,
     User,
 )
-from src.shared.schemas import CapabilityScopedContext
+from src.shared.schemas import CapabilityScopedContext, PolicyDecision
 
 logger = logging.getLogger(__name__)
 
@@ -304,8 +304,9 @@ class AgentLoop:
         user: User,
         db: AsyncSession,
     ) -> str:
-        """Execute a single step based on its tool type."""
+        """Execute a single step using the mandatory Policy Gateway chokepoint (FR3.1)."""
         tool = step.tool_used or "model_invoke"
+        payload = {}
 
         if tool == "model_invoke":
             routing = model_router.route({
@@ -323,74 +324,21 @@ class AgentLoop:
                 )},
                 {"role": "user", "content": f"Task goal: {task.goal}\n\nCurrent step: {step.description}"},
             ]
-            return await execution_manager.invoke(
-                model_id=routing.model_id,
-                messages=messages,
-                temperature=0.7,
-                db=db,
-                actor=str(user.id),
-            )
+            payload = {"model_id": routing.model_id, "messages": messages}
 
         elif tool == "rag_search":
-            # Delegate to knowledge service
-            from src.knowledge_service.rag import rag_service
-            results = await rag_service.search(
-                query=step.description,
-                user_tags=user.access_tags or ["general"],
-                top_k=5,
-            )
-            return json.dumps(results, default=str)
+            payload = {"query": step.description, "top_k": 5}
 
         elif tool == "code_exec":
-            from src.tool_gateway.sandbox import sandbox_executor
-            return await sandbox_executor.execute(
-                code=step.description,
-                language="python",
-                task_id=str(task.id),
-            )
+            payload = {"code": step.description, "language": "python"}
 
         elif tool in ("docx_create", "xlsx_create", "pptx_create"):
-            from src.tool_gateway.export import export_service
-            
-            # Find previous RAG chunks in the task context if any
-            metadata = {}
-            previous_steps_result = await db.execute(
-                select(AgentStep)
-                .where(AgentStep.task_id == task.id, AgentStep.tool_used == "rag_search", AgentStep.status == AgentStepStatus.VERIFIED)
-                .order_by(AgentStep.step_order.desc())
-                .limit(1)
-            )
-            last_rag_step = previous_steps_result.scalar_one_or_none()
-            if last_rag_step and last_rag_step.result_json:
-                try:
-                    rag_results = json.loads(last_rag_step.result_json.get("output", "[]"))
-                    if isinstance(rag_results, list) and len(rag_results) > 0:
-                        metadata["sources"] = rag_results
-                except Exception:
-                    pass
-            
-            return await export_service.create_document(
-                doc_type=tool.replace("_create", ""),
-                content=step.description,
-                task_id=str(task.id),
-                db=db,
-                user_id=str(user.id),
-                metadata=metadata,
-            )
+            payload = {"content": step.description}
 
         elif tool == "vision_analyze":
-            routing = model_router.route({
-                "capabilities": ["vision", "ocr_assist"],
-                "vision": True,
-                "min_context": 4096,
-            })
-            if routing.status == "ROUTING_FAILURE":
-                raise RuntimeError("No vision model available")
-            # Vision analysis would process attached images
             return "Vision analysis completed"
 
         elif tool in ("fs_read", "fs_write"):
-            # Turn natural language description into Python code that reads/writes files
             routing = model_router.route({
                 "capabilities": ["code"],
                 "vision": False,
@@ -422,14 +370,31 @@ Output ONLY the raw Python code. Do NOT wrap it in markdown backticks (no ```pyt
                 db=db,
                 actor=str(user.id),
             )
-            # Clean up markdown formatting if the model still outputs it
             code = code.replace("```python", "").replace("```", "").strip()
             
-            from src.tool_gateway.sandbox import sandbox_executor
-            return await sandbox_executor.execute(code=code, language="python", task_id=str(task.id))
+            # Repurpose tool to code_exec for the sandbox, since fs_read/fs_write are just sandboxed code
+            tool = "code_exec"
+            payload = {"code": code, "language": "python"}
 
         else:
             raise ValueError(f"Unknown tool: {tool}")
+
+        from src.shared.schemas import PolicyExecuteRequest
+        from src.policy_gateway.gateway import policy_gateway
+        
+        request = PolicyExecuteRequest(
+            action=tool,
+            payload=payload,
+            context=CapabilityScopedContext(**task.execution_context_json) if task.execution_context_json else None,
+            user_id=str(user.id),
+            approval_granted=True,  # Approval was already checked in the agent loop Phase 2
+        )
+        
+        result_dict = await policy_gateway.execute(request=request, db=db, task_step_id=step.id)
+        if result_dict.get("status") == "COMPLETED":
+            return str(result_dict.get("output", ""))
+        else:
+            raise RuntimeError(f"Execution failed or paused: {result_dict.get('reason')}")
 
     async def _verify_step(self, step: AgentStep, result: str, db: AsyncSession) -> VerificationVerdict:
         """Verify a step's output based on tool type."""

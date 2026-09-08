@@ -22,7 +22,7 @@ RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/wh
     fastapi uvicorn sqlalchemy asyncpg psycopg2-binary pydantic pydantic-settings \
     "python-jose[cryptography]" passlib "bcrypt<4.0.0" groq google-genai qdrant-client \
     python-docx openpyxl python-pptx PyPDF2 PyYAML python-multipart \
-    pytesseract Pillow pdf2image sentence-transformers httpx aiofiles orjson
+    pytesseract Pillow pdf2image sentence-transformers httpx aiofiles orjson redis
 
 # Copy source code
 COPY backend/src /app/src

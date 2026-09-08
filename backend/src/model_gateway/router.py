@@ -29,6 +29,7 @@ class ModelManifestEntry:
     latency_class: str = "medium"
     approx_vram_gb: float | None = None
     active: bool = True
+    model_hash: str | None = None
 
 
 @dataclass
@@ -110,7 +111,7 @@ class ModelRouter:
             ModelManifestEntry(
                 id="reasoning-groq",
                 provider="groq",
-                runtime_target="qwen/qwen3.8-27b",
+                runtime_target="openai/gpt-oss-20b",
                 capabilities=[
                     "general_qa", "planning", "summarization",
                     "tool_calling", "analysis", "writing",
@@ -122,7 +123,7 @@ class ModelRouter:
             ModelManifestEntry(
                 id="coding-groq",
                 provider="groq",
-                runtime_target="qwen/qwen3.8-27b",
+                runtime_target="openai/gpt-oss-20b",
                 capabilities=[
                     "code", "code_review", "sandbox_debug",
                     "tool_calling", "planning",
@@ -182,9 +183,37 @@ class ModelRouter:
             self.models[model.id] = model
 
     def register_model(self, entry: ModelManifestEntry) -> None:
-        """Register a new model (FR1.5 — no core code changes needed)."""
+        """Register a new model in memory (FR1.5 — no core code changes needed)."""
         self.models[entry.id] = entry
         logger.info(f"Registered model: {entry.id} ({entry.provider})")
+
+    async def sync_with_db(self, db) -> None:
+        """Sync in-memory models with the database (FR2.2 persistence)."""
+        from sqlalchemy import select
+        from src.shared.models import ModelRegistry
+
+        result = await db.execute(select(ModelRegistry))
+        db_models = result.scalars().all()
+        
+        count = 0
+        for db_model in db_models:
+            entry = ModelManifestEntry(
+                id=db_model.model_id,
+                provider=db_model.provider,
+                runtime_target=db_model.runtime_target,
+                capabilities=db_model.capabilities_json,
+                context_window=db_model.context_window,
+                requirements=db_model.requirements_json,
+                latency_class=db_model.latency_class,
+                approx_vram_gb=db_model.approx_vram_gb,
+                active=db_model.active,
+                model_hash=db_model.model_hash,
+            )
+            self.models[entry.id] = entry
+            count += 1
+        
+        if count > 0:
+            logger.info(f"Loaded {count} models from database registry")
 
     def _satisfies(self, model: ModelManifestEntry, requirements: dict) -> tuple[bool, list[str]]:
         """Check if a model satisfies the given requirements."""

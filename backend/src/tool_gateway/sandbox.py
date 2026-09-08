@@ -60,10 +60,28 @@ class SandboxExecutor:
         return await self._execute_python(code, timeout, task_id)
 
     async def _execute_python(self, code: str, timeout: int, task_id: str | None) -> str:
-        workspace = settings.sandbox_path / (task_id or uuid.uuid4().hex)
+        workspace = (settings.sandbox_path / (task_id or uuid.uuid4().hex)).absolute()
         workspace.mkdir(parents=True, exist_ok=True)
         code_path = workspace / "job.py"
         code_path.write_text(code, encoding="utf-8")
+
+        if os.environ.get("SENTINEL_ALLOW_HOST_SANDBOX") == "1":
+            logger.warning("Host sandbox enabled via SENTINEL_ALLOW_HOST_SANDBOX (bypassing Docker)")
+            try:
+                process = await asyncio.create_subprocess_exec(
+                    "python3", str(code_path),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=str(workspace),
+                )
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+                output = stdout.decode("utf-8", errors="replace")
+                errors = stderr.decode("utf-8", errors="replace")
+                return f"Exit code: {process.returncode}\nOutput:\n{output}\nErrors:\n{errors}"
+            except asyncio.TimeoutError:
+                return "Error: Code execution timed out"
+            finally:
+                shutil.rmtree(workspace, ignore_errors=True)
 
         docker_bin = shutil.which("docker")
         if docker_bin:
@@ -87,24 +105,6 @@ class SandboxExecutor:
             except Exception as exc:
                 logger.error("Docker sandbox failed: %s", exc)
                 return f"Error: sandbox failed: {exc}"
-            finally:
-                shutil.rmtree(workspace, ignore_errors=True)
-
-        if os.environ.get("SENTINEL_ALLOW_HOST_SANDBOX") == "1":
-            logger.warning("Docker unavailable; host sandbox enabled via SENTINEL_ALLOW_HOST_SANDBOX")
-            try:
-                process = await asyncio.create_subprocess_exec(
-                    "python3", str(code_path),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    cwd=str(workspace),
-                )
-                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
-                output = stdout.decode("utf-8", errors="replace")
-                errors = stderr.decode("utf-8", errors="replace")
-                return f"Exit code: {process.returncode}\nOutput:\n{output}\nErrors:\n{errors}"
-            except asyncio.TimeoutError:
-                return "Error: Code execution timed out"
             finally:
                 shutil.rmtree(workspace, ignore_errors=True)
 

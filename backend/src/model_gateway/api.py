@@ -11,7 +11,9 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from src.shared.auth import get_current_user, require_admin
-from src.shared.models import User
+from src.shared.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from src.shared.models import User, ModelRegistry
 from src.shared.schemas import ModelInfoResponse, ModelRegisterRequest, RoutingResult
 from src.model_gateway.router import ModelManifestEntry, model_router
 from src.model_gateway.execution_manager import execution_manager
@@ -47,6 +49,7 @@ async def list_models(user: User = Depends(get_current_user)):
 async def register_model(
     request: ModelRegisterRequest,
     user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Register a new model (FR1.5, FR2.1).
@@ -77,8 +80,31 @@ async def register_model(
         requirements=request.requirements if isinstance(request.requirements, dict) else {},
         latency_class=request.latency_class,
         approx_vram_gb=request.approx_vram_gb,
+        model_hash=model_hash,
     )
     model_router.register_model(entry)
+
+    # Persist to database (FR2.2 audit trail requirement)
+    db_model = ModelRegistry(
+        model_id=request.model_id,
+        display_name=request.display_name,
+        provider=request.provider,
+        backend=request.backend,
+        runtime_target=request.runtime_target,
+        capabilities_json=request.capabilities,
+        requirements_json=request.requirements,
+        context_window=request.context_window,
+        approx_vram_gb=request.approx_vram_gb,
+        latency_class=request.latency_class,
+        active=True,
+        model_hash=model_hash,
+        model_signature=request.signature if hasattr(request, 'signature') else None,
+        source=request.bundle_path if hasattr(request, 'bundle_path') else None,
+        version="1.0",
+        approved_by=user.username,
+    )
+    db.add(db_model)
+    await db.commit()
 
     return ModelInfoResponse(
         id=str(uuid.uuid4()),

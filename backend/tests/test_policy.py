@@ -14,7 +14,7 @@ async def test_policy_gateway_authorizes_admin():
     )
     
     decision = await policy_gateway.authorize(
-        action="some_action",
+        action="fs_read",
         user=user,
         context=None,
         db=db_mock

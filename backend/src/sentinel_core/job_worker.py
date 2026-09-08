@@ -68,7 +68,7 @@ async def process_claimed_job(job: JobQueue, db) -> None:
     )
 
     if result.get("status") == "PAUSED":
-        job.status = "completed"
+        job.status = "paused"
         job.completed_at = datetime.now(timezone.utc)
         return
 

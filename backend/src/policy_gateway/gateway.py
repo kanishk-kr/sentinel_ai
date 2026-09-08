@@ -37,6 +37,7 @@ from src.shared.schemas import (
     PolicyDecision,
     SecurityModeChangeRequest,
     SecurityModeResponse,
+    PolicyExecuteRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -246,6 +247,79 @@ class PolicyGateway:
         self._mode_last_changed = datetime.now(timezone.utc)
         logger.info(f"Security mode changed to: {mode}")
         return self.get_mode()
+
+    async def execute(
+        self,
+        request: PolicyExecuteRequest,
+        db: AsyncSession | None = None,
+        task_step_id: uuid.UUID | None = None,
+    ) -> dict:
+        """
+        The mandatory forwarding chokepoint.
+        Authenticates, authorizes, and explicitly routes to downstream services.
+        """
+        from src.shared.models import User
+        user_result = await db.execute(select(User).where(User.id == uuid.UUID(request.user_id))) if db else None
+        user = user_result.scalar_one_or_none() if user_result else None
+        if not user:
+            raise ValueError("User not found")
+
+        decision = await self.authorize(
+            action=request.action,
+            user=user,
+            context=request.context,
+            db=db,
+            task_step_id=task_step_id,
+        )
+
+        if decision.requires_approval and not request.approval_granted:
+            return {"status": "PAUSED", "reason": "Awaiting human approval", "approval_id": decision.approval_id}
+
+        if not decision.allowed and not request.approval_granted:
+            raise ValueError(f"Access denied: {decision.reason}")
+
+        # Route to downstream
+        payload = request.payload
+        if request.action == "model_invoke":
+            from src.model_gateway.execution_manager import execution_manager
+            result = await execution_manager.invoke(
+                model_id=payload.get("model_id"),
+                messages=payload.get("messages", []),
+                db=db,
+                actor=request.user_id,
+            )
+            return {"status": "COMPLETED", "output": result}
+
+        elif request.action in ["fs_read", "fs_write", "code_exec"]:
+            from src.tool_gateway.sandbox import sandbox_executor
+            result = await sandbox_executor.execute(
+                code=payload.get("code", ""),
+                language=payload.get("language", "python"),
+                task_id=request.context.task_id if request.context else None,
+            )
+            return {"status": "COMPLETED", "output": result}
+
+        elif request.action == "rag_search":
+            from src.knowledge_service.rag import rag_service
+            result = await rag_service.search(
+                query=payload.get("query"),
+                user_tags=user.access_tags or ["general"],
+                top_k=payload.get("top_k", 5),
+            )
+            return {"status": "COMPLETED", "output": result}
+
+        elif request.action in ["docx_create", "xlsx_create", "pptx_create"]:
+            from src.tool_gateway.sandbox import export_service
+            result = await export_service.create_document(
+                doc_type=request.action.replace("_create", ""),
+                content=payload.get("content", ""),
+                task_id=request.context.task_id if request.context else None,
+                user_id=request.user_id,
+                db=db,
+            )
+            return {"status": "COMPLETED", "output": result}
+        else:
+            raise ValueError(f"Unknown downstream route for action: {request.action}")
 
 
 # Singleton

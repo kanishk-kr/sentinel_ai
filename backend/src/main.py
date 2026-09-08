@@ -38,6 +38,12 @@ async def lifespan(app: FastAPI):
     await init_db()
     logger.info("Database initialized")
 
+    # Sync registered models from DB
+    from src.model_gateway.router import model_router
+    from src.shared.database import async_session_factory
+    async with async_session_factory() as db:
+        await model_router.sync_with_db(db)
+
     # Seed default admin user
     await _seed_default_users()
 
