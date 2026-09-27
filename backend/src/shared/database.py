@@ -53,6 +53,9 @@ async def init_db() -> None:
     owner_engine = create_async_engine(settings.database_owner_url, echo=settings.debug)
     async with owner_engine.begin() as conn:
         try:
+            from sqlalchemy import text
+            for schema in ["ops", "kb", "artifacts", "audit"]:
+                await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
             await conn.run_sync(Base.metadata.create_all)
         except sqlalchemy.exc.IntegrityError as e:
             logging.getLogger(__name__).warning(f"create_all encountered an integrity error (likely a table exists): {e}")
