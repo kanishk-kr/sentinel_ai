@@ -19,7 +19,7 @@ COPY backend/pyproject.toml .
 ENV PIP_DEFAULT_TIMEOUT=1000
 RUN pip install --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu torch torchvision torchaudio && \
     pip install --no-cache-dir \
-    fastapi uvicorn sqlalchemy asyncpg psycopg2-binary pydantic pydantic-settings \
+    fastapi uvicorn "sqlalchemy[asyncio]" asyncpg psycopg2-binary pydantic pydantic-settings \
     "python-jose[cryptography]" passlib "bcrypt<4.0.0" groq google-genai qdrant-client \
     python-docx openpyxl python-pptx PyPDF2 PyYAML python-multipart \
     pytesseract Pillow pdf2image sentence-transformers httpx aiofiles orjson redis
